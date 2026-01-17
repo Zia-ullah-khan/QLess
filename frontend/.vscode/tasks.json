@@ -1,0 +1,13 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Expo: start web (19006)",
+			"type": "shell",
+			"command": "cd /Users/sahilkharel/Desktop/nexhacks/qless && CI=1 EXPO_NO_INTERACTIVE=1 npx expo start --web --port 19006 --clear",
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

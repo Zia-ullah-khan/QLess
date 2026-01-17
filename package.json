@@ -1,0 +1,12 @@
+{
+  "name": "nexhacks",
+  "private": true,
+  "scripts": {
+    "frontend": "cd frontend && npm run start",
+    "frontend:web": "cd frontend && npm run web",
+    "frontend:web:clear": "cd frontend && npm run web:clear",
+    "frontend:start": "cd frontend && npm run start",
+    "frontend:android": "cd frontend && npm run android",
+    "frontend:ios": "cd frontend && npm run ios"
+  }
+}

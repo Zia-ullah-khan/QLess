@@ -48,7 +48,7 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const { selectedStore, cartItems, getTotal, setTransactionId, setQrCode } = useCart();
-  
+
   const scaleAnims = useRef(
     paymentMethods.map(() => new Animated.Value(1))
   ).current;
@@ -57,7 +57,7 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
 
   const handleMethodSelect = (methodId: string, index: number) => {
     setSelectedMethod(methodId);
-    
+
     // Bounce animation
     Animated.sequence([
       Animated.timing(scaleAnims[index], {
@@ -81,7 +81,7 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
     try {
       const response = await processCheckout(
         selectedStore.id,
-        cartItems.map((item) => ({ id: item.id, quantity: item.quantity })),
+        cartItems.map((item) => ({ id: item.id, quantity: item.quantity, price: item.price })),
         selectedMethod
       );
 
@@ -100,7 +100,7 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity

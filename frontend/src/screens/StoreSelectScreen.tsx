@@ -40,15 +40,18 @@ type Store = {
 //pull stores from 'localhost:5000/api/getstores' now
 const fetchStores = async (): Promise<Store[]> => {
   try {
-    const response = await fetch('http://10.113.203.223:5000/api/getstores');
-    const data: Store[] = await response.json();
-    return data;
+    const response = await fetch('http://10.113.203.223:5000/api/stores');
+    const data = await response.json();
+    return data.map((store: any) => ({
+      id: store._id || store.id,
+      name: store.name,
+      logo: store.logo || store.image_url || 'https://via.placeholder.com/150', // Fallback for logo
+    }));
   } catch (error) {
     console.error('Error fetching stores:', error);
     return [];
   }
 };
-// Stores data fetching moved inside component state
 
 const StoreSelectScreen: React.FC<Props> = ({ navigation }) => {
   const { setSelectedStore, clearCart } = useCart();

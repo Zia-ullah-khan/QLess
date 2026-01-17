@@ -30,6 +30,8 @@ interface CartContextType {
   setQrCode: (code: string | null) => void;
 }
 
+import { addItemToCart, getCart } from '../services/api';
+
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -38,7 +40,44 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
 
-  const addToCart = (item: Omit<CartItem, 'quantity'>) => {
+  // Clear cart when store changes (optional, but good practice if carts are per-store)
+  // Logic from backend: cart is per-store
+  // For now, we just keep local state
+
+  React.useEffect(() => {
+    const loadCart = async () => {
+      try {
+        const cartData = await getCart();
+        if (cartData && cartData.items) {
+          // Map backend items to frontend CartItem
+          const mappedItems: CartItem[] = cartData.items.map((item: any) => ({
+            id: item.product_id._id || item.product_id.id,
+            name: item.product_id.name,
+            price: item.product_id.price,
+            image: item.product_id.image_url,
+            quantity: item.qty,
+            barcode: item.product_id.barcode_value || item.product_id.barcode || '',
+          }));
+          setCartItems(mappedItems);
+
+          // Restore selected store if available
+          if (cartData.store_id) {
+            setSelectedStore({
+              id: cartData.store_id._id || cartData.store_id.id,
+              name: cartData.store_id.name,
+              logo: cartData.store_id.logo_url || cartData.store_id.logo,
+            });
+          }
+        }
+      } catch (error) {
+        console.log('No active cart or user not logged in');
+      }
+    };
+    loadCart();
+  }, []);
+
+  const addToCart = async (item: Omit<CartItem, 'quantity'>) => {
+    // Optimistic update
     setCartItems((prevItems) => {
       const existingItem = prevItems.find((i) => i.id === item.id);
       if (existingItem) {
@@ -48,6 +87,17 @@ export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       return [...prevItems, { ...item, quantity: 1 }];
     });
+
+    try {
+      if (selectedStore) {
+        await addItemToCart(selectedStore.id, item);
+        // We could update state from server response here, but let's stick to optimistic for smoothness
+        // and because server response mapping requires care
+      }
+    } catch (error) {
+      console.error('Failed to sync with backend:', error);
+      // Could show toast or rollback here
+    }
   };
 
   const removeFromCart = (itemId: string) => {

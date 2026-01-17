@@ -77,7 +77,7 @@ export const getCart = async (req, res) => {
 
         const cart = await Cart.findOne({ user_id: userId, is_active: true })
             .populate('store_id', 'name logo_url')
-            .populate('items.product_id', 'name price image_url sku');
+            .populate('items.product_id', 'name price image_url sku barcode_value');
 
         if (!cart) {
             return res.json({ items: [], store_id: null });

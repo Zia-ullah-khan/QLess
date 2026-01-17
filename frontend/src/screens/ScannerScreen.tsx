@@ -37,6 +37,8 @@ interface Props {
   navigation: ScannerScreenNavigationProp;
 }
 
+
+
 const ScannerScreen: React.FC<Props> = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -98,13 +100,13 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
       console.log('⏭️ Ignoring duplicate scan');
       return;
     }
-    
+
     console.log('🔍 Barcode detected:', type, data);
-    
+
     // Set ref immediately to block any subsequent scans
     isScanningRef.current = true;
     setScanned(true);
-    
+
     console.log('✅ Processing barcode:', data);
 
     // Haptic feedback
@@ -113,9 +115,13 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
     }
 
     try {
+      if (!selectedStore) {
+        throw new Error('No store selected');
+      }
+
       // Call backend API
-      const item = await scanBarcode(data);
-      
+      const item = await scanBarcode(selectedStore.id, data);
+
       // Add to cart
       addToCart({
         id: item.id,
@@ -164,16 +170,16 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
       }, 1500);
     } catch (error) {
       console.error('Scan error:', error);
-      
+
       // Show error message for unknown barcodes
       setErrorMessage('Product not found');
       setShowError(true);
-      
+
       // Haptic feedback for error
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
-      
+
       // Reset after delay
       setTimeout(() => {
         setShowError(false);
@@ -219,7 +225,7 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
+
       {/* Only render camera when screen is focused to save resources */}
       {isFocused && (
         <CameraView

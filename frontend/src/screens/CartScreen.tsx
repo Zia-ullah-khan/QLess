@@ -32,7 +32,6 @@ interface Props {
 
 const CartScreen: React.FC<Props> = ({ navigation }) => {
   const { cartItems, removeFromCart, updateQuantity, getTotal } = useCart();
-
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 

@@ -24,7 +24,7 @@ dotenv.config();
 connectDB();
 
 const app = express();
-const PORT = process.env.PORT || 8081;
+const PORT = process.env.PORT || 5001;
 
 // Security Middleware
 app.use(helmet());
@@ -63,7 +63,7 @@ app.delete('/api/cart/item', protect, deleteCartItem);
 
 // ==================== SCAN & CHECKOUT ====================
 app.post('/api/scan', scanBarcode);
-app.post('/api/checkout/create', checkout);
+app.post('/api/checkout/create', protect, checkout);
 app.post('/api/payment/confirm', confirmPayment);
 
 // ==================== TRANSACTION ROUTES ====================

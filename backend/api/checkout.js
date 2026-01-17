@@ -17,7 +17,7 @@ export const checkout = async (req, res, next) => {
     // 1. Create Transaction
     const transaction = new Transaction({
       store_id: storeId,
-      user_id: userId || null, // Optional
+      user_id: req.user ? req.user._id : (userId || null),
       total_amount: totalAmount,
       status: 'PAID', // Assuming successful payment for MVP/Simulation
       payment_provider: paymentMethod ? paymentMethod.toUpperCase() : 'MOCK',

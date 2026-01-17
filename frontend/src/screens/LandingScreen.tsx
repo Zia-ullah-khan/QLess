@@ -12,12 +12,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { typography } from '../theme/typography';
 
 const { width, height } = Dimensions.get('window');
 
 type RootStackParamList = {
   Landing: undefined;
+  Login: undefined;
+  Register: undefined;
   StoreSelect: undefined;
   Scanner: undefined;
   Cart: undefined;
@@ -108,6 +111,25 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
         }),
       ])
     ).start();
+
+    // Check for existing session
+    const checkLogin = async () => {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        if (token) {
+          // Add a small delay so the animation can be seen briefly or feels smooth
+          setTimeout(() => {
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'StoreSelect' }],
+            });
+          }, 1000);
+        }
+      } catch (e) {
+        console.log('Auto login failed', e);
+      }
+    };
+    checkLogin();
   }, []);
 
   const rotation = logoRotate.interpolate({
@@ -116,13 +138,13 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
   });
 
   const handleStartShopping = () => {
-    navigation.navigate('StoreSelect');
+    navigation.navigate('Login');
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
+
       <View style={styles.content}>
         {/* Logo Section */}
         <Animated.View

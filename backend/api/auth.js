@@ -88,3 +88,39 @@ export const authUser = [
         }
     }
 ];
+
+// @desc    Logout user
+// @route   POST /api/auth/logout
+// @access  Private
+export const logout = async (req, res) => {
+    try {
+        // In JWT-based auth, logout is handled client-side by removing the token
+        // Optionally, you could maintain a blacklist of tokens in Redis
+        res.json({ success: true, message: 'Logged out successfully' });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error: ' + error.message });
+    }
+};
+
+// @desc    Get current user
+// @route   GET /api/auth/me
+// @access  Private
+export const getCurrentUser = async (req, res) => {
+    try {
+        // req.user is set by the protect middleware
+        if (!req.user) {
+            return res.status(401).json({ message: 'Not authenticated' });
+        }
+
+        res.json({
+            _id: req.user._id,
+            name: req.user.name,
+            email: req.user.email,
+            phone: req.user.phone,
+            isAdmin: req.user.isAdmin,
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Server error: ' + error.message });
+    }
+};
+

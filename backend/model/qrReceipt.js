@@ -40,8 +40,7 @@ const qrReceiptSchema = new mongoose.Schema(
 );
 
 // Indexes
-qrReceiptSchema.index({ qr_token: 1 });
-qrReceiptSchema.index({ transaction_id: 1 });
+// Note: qr_token and transaction_id already have unique indexes via unique: true
 qrReceiptSchema.index({ expires_at: 1 });
 
 export default mongoose.model('QrReceipt', qrReceiptSchema);

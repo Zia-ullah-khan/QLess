@@ -25,16 +25,12 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^4.22.1",
-<<<<<<< HEAD
     "express-rate-limit": "^8.2.1",
     "express-validator": "^7.3.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^9.1.4"
-=======
     "mongoose": "^9.1.4",
     "qrcode": "^1.5.4"
->>>>>>> 34b479785fc49f6fa2e1f0a9fcf849b69021db67
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

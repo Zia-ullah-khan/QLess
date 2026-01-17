@@ -8,6 +8,7 @@ import rateLimit from 'express-rate-limit';
 import { registerUser, authUser } from './api/auth.js';
 import { scanBarcode } from './api/scan-barcode.js';
 import { checkout } from './api/checkout.js';
+import {generateQRForTransaction} from './api/qr-code.js';
 
 dotenv.config();
 
@@ -34,12 +35,27 @@ app.use(bodyParser.json());
 app.get('/', (req, res) => {
   res.send('Hello from the backend server!');
 });
+<<<<<<< HEAD
 
 // Auth Routes
 app.post('/api/auth/register', registerUser);
 app.post('/api/auth/login', authUser);
 
 // Business Routes
+=======
+app.get('/api/generate-qr', async (req, res) => {
+  try {
+    const { transactionId, storeId, itemCount, timestamp } = req.body;
+    const qrCode = await generateQRForTransaction(123, '123', 5, new Date());
+    //return qrcode as an image
+    res.setHeader('Content-Type', 'image/png');
+    const img = Buffer.from(qrCode.split(",")[1], 'base64');
+    res.send(img);
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+>>>>>>> 34b479785fc49f6fa2e1f0a9fcf849b69021db67
 app.post('/api/scan-barcode', scanBarcode);
 app.post('/api/checkout', checkout);
 app.listen(PORT, () => {

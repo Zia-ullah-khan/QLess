@@ -2,14 +2,13 @@
   "name": "qless",
   "version": "1.0.0",
   "main": "index.ts",
-  "scripts": {
-    "start": "NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start",
-    "start:clear": "NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --clear",
-    "android": "NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --android",
-    "ios": "NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --ios",
-    "web": "NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --web --localhost",
-    "web:clear": "NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --web --localhost --clear",
-    "generate:barcodes": "node ./scripts/generate-barcodes.mjs"
+    "scripts": {
+    "start": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start",
+    "start:clear": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --clear",
+    "android": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --android",
+    "ios": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --ios",
+    "web": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --web --localhost",
+    "web:clear": "cross-env NODE_OPTIONS=--dns-result-order=ipv4first EXPO_NO_TELEMETRY=1 EXPO_NO_DOCTOR=1 expo start --web --localhost --clear"
   },
   "engines": {
     "node": "^20 || ^22"
@@ -40,6 +39,7 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "bwip-js": "^4.8.0",
+    "cross-env": "^10.1.0",
     "typescript": "~5.9.2"
   },
   "private": true

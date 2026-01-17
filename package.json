@@ -8,5 +8,8 @@
     "frontend:start": "cd frontend && npm run start",
     "frontend:android": "cd frontend && npm run android",
     "frontend:ios": "cd frontend && npm run ios"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
   }
 }

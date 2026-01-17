@@ -21,6 +21,7 @@ type RootStackParamList = {
   Landing: undefined;
   Login: undefined;
   Register: undefined;
+  AdminLogin: undefined;
   StoreSelect: undefined;
   Scanner: undefined;
   Cart: undefined;
@@ -141,6 +142,10 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
     navigation.navigate('Login');
   };
 
+  const handleAdminLogin = () => {
+    navigation.navigate('AdminLogin');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
@@ -218,6 +223,14 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
         >
           <Text style={styles.buttonText}>Start Shopping</Text>
           <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.adminButton}
+          onPress={handleAdminLogin}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="settings-outline" size={18} color="#6B7280" />
+          <Text style={styles.adminButtonText}>Admin Access</Text>
         </TouchableOpacity>
       </Animated.View>
     </SafeAreaView>
@@ -307,6 +320,18 @@ const styles = StyleSheet.create({
     ...typography.button,
     color: '#FFFFFF',
     marginRight: 8,
+  },
+  adminButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 16,
+    paddingVertical: 12,
+  },
+  adminButtonText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginLeft: 6,
   },
 });
 

@@ -17,7 +17,7 @@ import { createPaymentSheet } from './api/stripe-payment.js';
 import { verifyQRCode } from './api/verify.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createStore, createProduct, updateProduct, deleteProduct } from './api/admin.js';
+import { createStore, createProduct, updateProduct, deleteProduct, adminLogin } from './api/admin.js';
 import { healthCheck, getVersion } from './api/health.js';
 import { protect, admin } from './middleware/authMiddleware.js';
 
@@ -85,6 +85,7 @@ app.get('/api/transaction/:id/qr', getTransactionQR);
 // app.get('/api/verify/transaction/:id', getTransactionForVerification);
 
 // ==================== ADMIN ROUTES (Protected) ====================
+app.post('/api/admin/login', adminLogin);
 app.post('/api/admin/store', protect, admin, createStore);
 app.post('/api/admin/product', protect, admin, createProduct);
 app.patch('/api/admin/product/:id', protect, admin, updateProduct);

@@ -1,6 +1,33 @@
 import Store from '../model/store.js';
 import Product from '../model/product.js';
 
+import User from '../model/user.js';
+import jwt from 'jsonwebtoken';
+
+// Admin login (must be admin)
+export const adminLogin = async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (user && (await user.matchPassword(password))) {
+            if (!user.isAdmin) {
+                return res.status(403).json({ message: 'Access denied: not an admin' });
+            }
+            const token = jwt.sign({ id: user._id, isAdmin: true }, process.env.JWT_SECRET, { expiresIn: '30d' });
+            return res.json({
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                isAdmin: true,
+                token,
+            });
+        }
+        return res.status(401).json({ message: 'Invalid email or password' });
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
 // Create a new store (admin only)
 export const createStore = async (req, res) => {
     try {

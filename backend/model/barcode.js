@@ -19,7 +19,7 @@ const barcodeMapSchema = new mongoose.Schema(
 );
 
 // Indexes
-barcodeMapSchema.index({ barcode_value: 1 });
+
 barcodeMapSchema.index({ product_id: 1 });
 
 export default mongoose.model('BarcodeMap', barcodeMapSchema);

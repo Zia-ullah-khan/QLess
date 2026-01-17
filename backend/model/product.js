@@ -46,7 +46,7 @@ const productSchema = new mongoose.Schema(
 
 // Indexes
 productSchema.index({ store_id: 1 });
-productSchema.index({ barcode_value: 1 });
+
 productSchema.index({ sku: 1 });
 
 export default mongoose.model('Product', productSchema);

@@ -1,100 +1,65 @@
-import QrReceipt from '../model/qrReceipt.js';
 import Transaction from '../model/transaction.js';
-import TransactionItem from '../model/transactionItem.js';
 
-// Verify QR code at gate
-export const verifyQR = async (req, res) => {
+export const verifyQRCode = async (req, res) => {
     try {
-        const { qrToken } = req.body;
+        const { qrData } = req.body;
 
-        if (!qrToken) {
-            return res.status(400).json({ message: 'QR token is required' });
+        if (!qrData) {
+            return res.status(400).json({ success: false, message: 'No QR data provided' });
         }
 
-        const qrReceipt = await QrReceipt.findOne({ qr_token: qrToken })
-            .populate({
-                path: 'transaction_id',
-                populate: [
-                    { path: 'store_id', select: 'name logo_url' },
-                    { path: 'user_id', select: 'name email' }
-                ]
-            });
-
-        if (!qrReceipt) {
-            return res.status(404).json({ message: 'Invalid QR code' });
+        let parsedData;
+        try {
+            parsedData = JSON.parse(qrData);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: 'Invalid QR format' });
         }
 
-        // Check if expired
-        if (new Date() > qrReceipt.expires_at) {
-            return res.status(400).json({ message: 'QR code has expired' });
+        const { transactionId, verified } = parsedData;
+
+        if (!transactionId || !verified) {
+            return res.status(400).json({ success: false, message: 'Invalid QR content' });
         }
 
-        // Check if already verified
-        if (qrReceipt.is_verified) {
-            return res.status(400).json({
-                message: 'QR code already verified',
-                verified_at: qrReceipt.verified_at,
-                verified_by: qrReceipt.verified_by,
-            });
-        }
-
-        // Mark as verified
-        qrReceipt.is_verified = true;
-        qrReceipt.verified_at = new Date();
-        qrReceipt.verified_by = req.body.verifiedBy || 'gate_staff';
-
-        await qrReceipt.save();
-
-        // Get transaction items for display
-        const items = await TransactionItem.find({ transaction_id: qrReceipt.transaction_id })
-            .populate('product_id', 'name price image_url');
-
-        res.json({
-            success: true,
-            message: 'QR code verified successfully',
-            transaction: qrReceipt.transaction_id,
-            items,
-            verified_at: qrReceipt.verified_at,
-        });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-};
-
-// Get transaction for verification (staff use)
-export const getTransactionForVerification = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const transaction = await Transaction.findById(id)
-            .populate('store_id', 'name logo_url')
-            .populate('user_id', 'name email phone');
+        // Find transaction
+        const transaction = await Transaction.findById(transactionId);
 
         if (!transaction) {
-            return res.status(404).json({ message: 'Transaction not found' });
+            return res.status(404).json({ success: false, message: 'Transaction not found' });
         }
 
-        // Get items
-        const items = await TransactionItem.find({ transaction_id: id })
-            .populate('product_id', 'name price image_url sku');
+        // Check status
+        if (transaction.qr_code_status === 'USED') {
+            return res.status(400).json({ success: false, message: 'QR Code already used' });
+        }
 
-        // Get QR receipt status
-        const qrReceipt = await QrReceipt.findOne({ transaction_id: id });
+        if (transaction.qr_code_status !== 'VALID') {
+            return res.status(400).json({ success: false, message: `QR Code is ${transaction.qr_code_status}` });
+        }
 
-        res.json({
-            transaction,
-            items,
-            qr_status: qrReceipt ? {
-                is_verified: qrReceipt.is_verified,
-                verified_at: qrReceipt.verified_at,
-                verified_by: qrReceipt.verified_by,
-                expires_at: qrReceipt.expires_at,
-            } : null,
+        // Check expiration
+        if (new Date() > new Date(transaction.qr_code_expires_at)) {
+            transaction.qr_code_status = 'EXPIRED';
+            await transaction.save();
+            return res.status(400).json({ success: false, message: 'QR Code has expired' });
+        }
+
+        // Mark as USED
+        transaction.qr_code_status = 'USED';
+        await transaction.save();
+
+        return res.json({
+            success: true,
+            message: 'Verified! Doors opening...',
+            transaction: {
+                amount: transaction.total_amount,
+                items: transaction.items?.length || 0,
+                date: transaction.createdAt
+            }
         });
+
     } catch (error) {
-        if (error.kind === 'ObjectId') {
-            return res.status(404).json({ message: 'Transaction not found' });
-        }
-        res.status(500).json({ message: error.message });
+        console.error('Verification error:', error);
+        res.status(500).json({ success: false, message: 'Server error during verification' });
     }
 };

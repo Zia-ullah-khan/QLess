@@ -32,7 +32,7 @@ const transactionSchema = new mongoose.Schema(
         },
         payment_provider: {
             type: String,
-            enum: ['APPLE_PAY', 'GOOGLE_PAY', 'CARD', 'PAYPAL', 'MOCK'],
+            enum: ['APPLE_PAY', 'GOOGLE_PAY', 'CARD', 'PAYPAL', 'MOCK', 'STRIPE', 'STRIPE_SHEET'],
             required: false,
         },
         payment_reference: {
@@ -41,6 +41,19 @@ const transactionSchema = new mongoose.Schema(
         },
         payment_intent_id: {
             type: String,
+            required: false,
+        },
+        qr_code_data: {
+            type: String,
+            required: false,
+        },
+        qr_code_status: {
+            type: String,
+            enum: ['VALID', 'INVALID', 'EXPIRED', 'USED'],
+            default: 'VALID',
+        },
+        qr_code_expires_at: {
+            type: Date,
             required: false,
         },
     },

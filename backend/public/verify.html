@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QLess Gate Verifier</title>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1A1A2E;
+            color: white;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Door Animation System */
+        .door-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 100;
+            pointer-events: none; /* Let clicks pass through if needed, but mainly visual */
+            display: flex;
+        }
+
+        .door {
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(135deg, #2D3436 0%, #000000 100%);
+            border-right: 2px solid #4A90A4;
+            transition: transform 1.5s cubic-bezier(0.4, 0.0, 0.2, 1);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        }
+
+        .door-left {
+            transform-origin: left;
+            border-right: 4px solid #333;
+        }
+
+        .door-right {
+            transform-origin: right;
+            border-left: 4px solid #333;
+            border-right: none;
+        }
+
+        /* Access Granted State */
+        .door-container.open .door-left {
+            transform: translateX(-100%);
+        }
+
+        .door-container.open .door-right {
+            transform: translateX(100%);
+        }
+
+        /* Scanner UI (Behind Doors initially, or visible if we treat doors as "Gate") */
+        /* Actually, user wants doors to OPEN when verified. So simple state: 
+           1. Doors are CLOSED initially? No, that blocks the camera. 
+           2. Scenario: This is a kiosk. 
+              The scanner is always visible. When verified, the "Gate" (doors) onscreen opens to indicate physical gate opening? 
+              OR, verify page IS the gate visual.
+              
+           Let's assume:
+           - Display shows "Scan QR to Enter/Exit"
+           - Camera is active.
+           - User scans.
+           - On Success -> Doors (overlay) slide open to reveal "Access Granted" message?
+           
+           Better: The screen IS the gate. 
+           - Show Camera branding.
+           - On success, show "Doors Opening" animation overlay.
+        */
+
+        #reader {
+            width: 100%;
+            max-width: 600px;
+            margin-top: 50px;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(74, 144, 164, 0.5);
+        }
+
+        .status-message {
+            margin-top: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            text-align: center;
+            min-height: 40px;
+            color: #4A90A4;
+        }
+        
+        /* The Visual Gate Overlay */
+        .gate-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+        
+        .gate-overlay.active {
+            opacity: 1;
+        }
+
+        .gate-doors {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+        }
+
+        .gate-door {
+            flex: 1;
+            background: repeating-linear-gradient(
+                45deg,
+                #222,
+                #222 10px,
+                #333 10px,
+                #333 20px
+            );
+            border: 2px solid #555;
+            transition: transform 2s ease-in-out;
+            box-shadow: inset 0 0 20px #000;
+        }
+
+        .gate-overlay.open .gate-door-left {
+            transform: translateX(-100%);
+        }
+        .gate-overlay.open .gate-door-right {
+            transform: translateX(100%);
+        }
+        
+        .success-checkmark {
+            position: absolute;
+            z-index: 60;
+            font-size: 80px;
+            color: #4CAF50;
+            opacity: 0;
+            transform: scale(0.5);
+            transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        
+        .gate-overlay.open .success-checkmark {
+            opacity: 1;
+            transform: scale(1);
+            transition-delay: 0.5s;
+        }
+
+        .logo {
+            margin-top: 40px;
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: 2px;
+        }
+        .logo span { color: #4A90A4; }
+
+    </style>
+</head>
+<body>
+
+    <div class="logo">Q<span>LESS</span> GATE</div>
+
+    <div id="reader"></div>
+    <div class="status-message" id="status">Ready to Scan</div>
+
+    <!-- Visual Gate System -->
+    <div class="gate-overlay" id="gate">
+        <div class="gate-doors">
+            <div class="gate-door gate-door-left"></div>
+            <div class="gate-door gate-door-right"></div>
+        </div>
+        <div class="success-checkmark">
+            VERIFIED<br>DOORS OPENING
+        </div>
+    </div>
+
+    <script>
+        const statusEl = document.getElementById('status');
+        const gateEl = document.getElementById('gate');
+        let isProcessing = false;
+
+        async function onScanSuccess(decodedText, decodedResult) {
+            if (isProcessing) return;
+            isProcessing = true;
+            
+            console.log(`Scan result: ${decodedText}`);
+            statusEl.innerText = "Verifying...";
+            statusEl.style.color = "#FFD700"; // Gold for processing
+
+            try {
+                const response = await fetch('/api/verify-qr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ qrData: decodedText })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    statusEl.innerText = "ACCESS GRANTED";
+                    statusEl.style.color = "#4CAF50";
+                    triggerGateOpening();
+                } else {
+                    statusEl.innerText = data.message || "ACCESS DENIED";
+                    statusEl.style.color = "#EF4444";
+                    
+                    setTimeout(() => {
+                        isProcessing = false;
+                        statusEl.innerText = "Ready to Scan";
+                        statusEl.style.color = "#4A90A4";
+                    }, 3000);
+                }
+            } catch (err) {
+                console.error(err);
+                statusEl.innerText = "Error connecting to server";
+                statusEl.style.color = "#EF4444";
+                isProcessing = false;
+            }
+        }
+
+        function triggerGateOpening() {
+            // 1. Show Gate (Closed)
+            gateEl.classList.add('active');
+            
+            // 2. Play Sound (Optional, browser verification needed usually)
+            // const audio = new Audio('door-sound.mp3'); audio.play().catch(e => {});
+
+            setTimeout(() => {
+                // 3. Open Doors
+                gateEl.classList.add('open');
+                
+                // 4. Reset after some time
+                setTimeout(() => {
+                    gateEl.classList.remove('open');
+                    gateEl.classList.remove('active');
+                    isProcessing = false;
+                    statusEl.innerText = "Ready to Scan";
+                    statusEl.style.color = "#4A90A4";
+                }, 5000);
+            }, 500); // Short delay before opening
+        }
+
+        function onScanFailure(error) {
+            // handle scan failure, usually better to ignore and keep scanning.
+            // console.warn(`Code scan error = ${error}`);
+        }
+
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader",
+            { fps: 10, qrbox: {width: 250, height: 250} },
+            /* verbose= */ false);
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    </script>
+</body>
+</html>

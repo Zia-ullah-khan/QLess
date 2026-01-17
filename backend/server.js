@@ -13,10 +13,16 @@ import { getStores, getStoreById, getStoreProducts } from './api/stores.js';
 import { addToCart, getCart, updateCartItem, deleteCartItem } from './api/cart.js';
 import { getTransaction, getTransactionItems, getTransactionQR } from './api/transactions.js';
 import { confirmPayment } from './api/payment.js';
-import { verifyQR, getTransactionForVerification } from './api/verify.js';
+import { createPaymentSheet } from './api/stripe-payment.js';
+import { verifyQRCode } from './api/verify.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { createStore, createProduct, updateProduct, deleteProduct } from './api/admin.js';
 import { healthCheck, getVersion } from './api/health.js';
 import { protect, admin } from './middleware/authMiddleware.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -39,6 +45,7 @@ app.use(limiter);
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/', (req, res) => {
   res.send('Hello from the backend server!');
@@ -64,6 +71,8 @@ app.delete('/api/cart/item', protect, deleteCartItem);
 // ==================== SCAN & CHECKOUT ====================
 app.post('/api/scan', scanBarcode);
 app.post('/api/checkout/create', protect, checkout);
+app.post('/api/payment/sheet', createPaymentSheet);
+app.post('/api/verify-qr', verifyQRCode);
 app.post('/api/payment/confirm', confirmPayment);
 
 // ==================== TRANSACTION ROUTES ====================
@@ -72,8 +81,8 @@ app.get('/api/transaction/:id/items', getTransactionItems);
 app.get('/api/transaction/:id/qr', getTransactionQR);
 
 // ==================== VERIFICATION ROUTES ====================
-app.post('/api/verify/qr', verifyQR);
-app.get('/api/verify/transaction/:id', getTransactionForVerification);
+// app.post('/api/verify/qr', verifyQR);
+// app.get('/api/verify/transaction/:id', getTransactionForVerification);
 
 // ==================== ADMIN ROUTES (Protected) ====================
 app.post('/api/admin/store', protect, admin, createStore);

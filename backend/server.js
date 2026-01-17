@@ -3,6 +3,8 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import connectDB from './config/database.js';
+import { scanBarcode } from './api/scan-barcode.js';
+import { checkout } from './api/checkout.js';
 
 dotenv.config();
 
@@ -19,8 +21,8 @@ app.use(bodyParser.json());
 app.get('/', (req, res) => {
   res.send('Hello from the backend server!');
 });
-app.get('/api/scan-barcode', scanBarcode);
-app.get('/api/checkout', checkout);
+app.post('/api/scan-barcode', scanBarcode);
+app.post('/api/checkout', checkout);
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });

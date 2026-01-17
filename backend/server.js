@@ -3,10 +3,13 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import connectDB from './config/database.js';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import { registerUser, authUser } from './api/auth.js';
 import { scanBarcode } from './api/scan-barcode.js';
 import { checkout } from './api/checkout.js';
-import {generateQRForTransaction} from './api/qr-code.js';
-import {getStores} from './api/getstores.js';
+import { generateQRForTransaction } from './api/qr-code.js';
+import { getStores } from './api/getstores.js';
 
 dotenv.config();
 
@@ -16,6 +19,16 @@ connectDB();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Security Middleware
+app.use(helmet());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later'
+});
+app.use(limiter);
+
 // Middleware
 app.use(cors());
 app.use(bodyParser.json());
@@ -23,6 +36,11 @@ app.use(bodyParser.json());
 app.get('/', (req, res) => {
   res.send('Hello from the backend server!');
 });
+
+
+app.post('/api/auth/register', registerUser);
+app.post('/api/auth/login', authUser);
+
 app.get('/api/generate-qr', async (req, res) => {
   try {
     const { transactionId, storeId, itemCount, timestamp } = req.body;

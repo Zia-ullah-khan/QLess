@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
+import { scanBarcode } from './api/scan-barcode.js';
+import { checkout } from './api/checkout.js';
 const app = express();
 const PORT = process.env.PORT || 5000;
 app.use(cors());
@@ -8,6 +10,8 @@ app.use(bodyParser.json());
 app.get('/', (req, res) => {
   res.send('Hello from the backend server!');
 });
+app.get('/api/scan-barcode', scanBarcode);
+app.get('/api/checkout', checkout);
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });

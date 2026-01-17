@@ -173,45 +173,26 @@ export const getCart = async (): Promise<any> => {
 export const processCheckout = async (
   storeId: string,
   items: Array<{ id: string; quantity: number; price?: number }>,
-  paymentMethod: string
+  paymentMethod: string,
+  paymentIntentId?: string
 ): Promise<CheckoutResponse> => {
   try {
-    // Calculate total on frontend for validation (optional, backend should recalc)
-    // Note: items passed here might need to include price if we want to send totalAmount
-    // But typically we should just send IDs and Qty and let backend calc price.
-    // However, the backend endpoint expects totalAmount based on our reading of checkout.js
-
-    // We need to fetch the cart or have prices available. 
-    // Assuming the `items` array passed in has prices or we calculate vaguely.
-    // Ideally we should use the cart total.
-
-    let totalAmount = 0;
-    // This is a hack because the interface passed to this function might not have price
-    // We should rely on the backend to accept items without total OR ensure we pass it.
-    // Looking at checkout.js: const { storeId, items, paymentMethod, totalAmount, userId } = req.body;
-
-    // If we don't have prices, we might be in trouble validation wise. 
-    // Let's assume the caller passes items with prices or we update the caller. 
-
     const headers = await getHeaders();
 
-    // We need to make sure items has price mapping if possible, or we assume caller handles it.
-    // Let's calculate total if price exists on items, otherwise 0
-    totalAmount = items.reduce((sum, i) => sum + ((i.price || 0) * i.quantity), 0);
+    // Calculate total on frontend for validation (optional, backend should recalc)
+    let totalAmount = items.reduce((sum, i) => sum + ((i.price || 0) * i.quantity), 0);
+    // Add tax
+    totalAmount = totalAmount * 1.08;
 
     const response = await fetch(`${API_BASE_URL}/checkout/create`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         storeId,
-        items: items.map(i => ({ id: i.id, quantity: i.quantity })),
+        items: items.map(i => ({ id: i.id, quantity: i.quantity, price: i.price })),
         paymentMethod,
-        totalAmount: totalAmount, // Pass calculated total
-        // userId is extracted from token on backend typically, but checkout.js reads it from body too?
-        // checkout.js: const { ... userId } = req.body;
-        // It uses req.body.userId OR null. It doesn't seem to force req.user._id from middleware? 
-        // Wait, checkout.js doesn't seem to use `protect` middleware explicitly in the file view I saw?
-        // I should check server.js routes.
+        totalAmount,
+        paymentIntentId
       })
     });
 

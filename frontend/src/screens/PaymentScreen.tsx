@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useCart } from '../context/CartContext';
 import { processCheckout } from '../services/api';
 import { typography } from '../theme/typography';
+import { useStripe } from '@stripe/stripe-react-native';
 
 type RootStackParamList = {
   Landing: undefined;
@@ -21,7 +22,8 @@ type RootStackParamList = {
   Scanner: undefined;
   Cart: undefined;
   Payment: undefined;
-  QRCode: undefined;
+  PaymentError: { message: string };
+  QRCode: { qrCode: string; transactionId: string };
 };
 
 type PaymentScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Payment'>;
@@ -30,69 +32,100 @@ interface Props {
   navigation: PaymentScreenNavigationProp;
 }
 
-interface PaymentMethod {
-  id: string;
-  name: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-}
-
-const paymentMethods: PaymentMethod[] = [
-  { id: 'apple_pay', name: 'Apple Pay', icon: 'logo-apple', color: '#000000' },
-  { id: 'google_pay', name: 'Google Pay', icon: 'logo-google', color: '#4285F4' },
-  { id: 'card', name: 'Credit/Debit Card', icon: 'card-outline', color: '#1A1A2E' },
-  { id: 'paypal', name: 'PayPal', icon: 'logo-paypal', color: '#003087' },
-];
-
 const PaymentScreen: React.FC<Props> = ({ navigation }) => {
-  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const { selectedStore, cartItems, getTotal, setTransactionId, setQrCode } = useCart();
-
-  const scaleAnims = useRef(
-    paymentMethods.map(() => new Animated.Value(1))
-  ).current;
+  const { selectedStore, cartItems, getTotal, setTransactionId, setQrCode, clearCart } = useCart();
 
   const total = getTotal() * 1.08; // Including tax
 
-  const handleMethodSelect = (methodId: string, index: number) => {
-    setSelectedMethod(methodId);
-
-    // Bounce animation
-    Animated.sequence([
-      Animated.timing(scaleAnims[index], {
-        toValue: 0.95,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.spring(scaleAnims[index], {
-        toValue: 1,
-        friction: 4,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const handlePayment = async () => {
-    if (!selectedMethod || !selectedStore) return;
+    if (!selectedStore) return;
 
     setIsProcessing(true);
 
     try {
-      const response = await processCheckout(
-        selectedStore.id,
-        cartItems.map((item) => ({ id: item.id, quantity: item.quantity, price: item.price })),
-        selectedMethod
-      );
+      // 1. Fetch PaymentIntent from backend
+      const response = await fetch('http://10.113.203.223:5000/api/payment/sheet', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          totalAmount: total,
+          currency: 'usd',
+        }),
+      });
 
-      if (response.success) {
-        setTransactionId(response.transactionId);
-        setQrCode(response.qrCode);
-        navigation.navigate('QRCode');
+      const { paymentIntent, paymentIntentId, ephemeralKey, customer } = await response.json();
+
+      // 2. Initialize Payment Sheet
+      const { error: initError } = await initPaymentSheet({
+        merchantDisplayName: selectedStore.name,
+        customerId: customer,
+        customerEphemeralKeySecret: ephemeralKey,
+        paymentIntentClientSecret: paymentIntent,
+        // Apple Pay / Google Pay are enabled by default if configured
+        applePay: {
+          merchantCountryCode: 'US',
+        },
+        googlePay: {
+          merchantCountryCode: 'US',
+          testEnv: true, // Set false for production
+        },
+      });
+
+      if (initError) {
+        console.error('Stripe Init Error:', initError);
+        alert(`Stripe Error: ${initError.message}`);
+        setIsProcessing(false);
+        return;
+      }
+
+      // 3. Present Payment Sheet
+      const { error: presentError } = await presentPaymentSheet();
+
+      if (presentError) {
+        console.error('Stripe Present Error:', presentError);
+
+        // If it's a real error (not just user cancellation), show the error screen
+        if (presentError.code !== 'Canceled') {
+          navigation.navigate('PaymentError', {
+            message: presentError.localizedMessage || presentError.message || 'Payment failed'
+          });
+        }
+
+        setIsProcessing(false);
+      } else {
+        // 4. Success! Now sync with our backend (create Transaction record)
+        // Extract PaymentIntent ID from client secret if needed, OR better: use the one returned by backend
+        // We need to update backend to return it.
+        // For now, let's assume valid paymentIntent string is passed.
+
+        const checkoutResponse = await processCheckout(
+          selectedStore.id,
+          cartItems.map((item) => ({ id: item.id, quantity: item.quantity, price: item.price })),
+          'STRIPE_SHEET',
+          paymentIntentId
+        );
+
+        if (checkoutResponse.success) {
+          setTransactionId(checkoutResponse.transactionId);
+          setQrCode(checkoutResponse.qrCode);
+          clearCart();
+          navigation.navigate('QRCode', {
+            qrCode: checkoutResponse.qrCode,
+            transactionId: checkoutResponse.transactionId
+          });
+        } else {
+          alert('Payment success but backend sync failed.');
+        }
+        setIsProcessing(false);
       }
     } catch (error) {
       console.error('Payment error:', error);
-    } finally {
+      alert('Payment failed');
       setIsProcessing(false);
     }
   };
@@ -136,39 +169,15 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Payment Methods */}
-      <Text style={styles.sectionTitle}>Select Payment Method</Text>
+      {/* Payment Methods - Simplified for Stripe */}
       <View style={styles.methodsContainer}>
-        {paymentMethods.map((method, index) => (
-          <TouchableOpacity
-            key={method.id}
-            activeOpacity={0.9}
-            onPress={() => handleMethodSelect(method.id, index)}
-          >
-            <Animated.View
-              style={[
-                styles.methodCard,
-                selectedMethod === method.id && styles.methodCardSelected,
-                { transform: [{ scale: scaleAnims[index] }] },
-              ]}
-            >
-              <View
-                style={[
-                  styles.methodIconContainer,
-                  { backgroundColor: `${method.color}15` },
-                ]}
-              >
-                <Ionicons name={method.icon} size={24} color={method.color} />
-              </View>
-              <Text style={styles.methodName}>{method.name}</Text>
-              <View style={styles.radioOuter}>
-                {selectedMethod === method.id && (
-                  <View style={styles.radioInner} />
-                )}
-              </View>
-            </Animated.View>
-          </TouchableOpacity>
-        ))}
+        <View style={[styles.methodCard, styles.methodCardSelected]}>
+          <View style={[styles.methodIconContainer, { backgroundColor: '#E0E7FF' }]}>
+            <Ionicons name="card" size={24} color="#4338CA" />
+          </View>
+          <Text style={styles.methodName}>Credit/Debit Card & Wallets</Text>
+          <Ionicons name="checkmark-circle" size={22} color="#4A90A4" />
+        </View>
       </View>
 
       {/* Pay Button */}
@@ -176,10 +185,9 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
         <TouchableOpacity
           style={[
             styles.payButton,
-            (!selectedMethod || isProcessing) && styles.payButtonDisabled,
           ]}
           onPress={handlePayment}
-          disabled={!selectedMethod || isProcessing}
+          disabled={isProcessing}
           activeOpacity={0.9}
         >
           {isProcessing ? (
@@ -189,9 +197,9 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
             </>
           ) : (
             <>
-              <Ionicons name="lock-closed" size={18} color="#FFFFFF" />
+              <Ionicons name="card" size={18} color="#FFFFFF" />
               <Text style={styles.payButtonText}>
-                Pay ${total.toFixed(2)}
+                Stripe Checkout ${total.toFixed(2)}
               </Text>
             </>
           )}
@@ -371,10 +379,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 8,
-  },
-  payButtonDisabled: {
-    backgroundColor: '#A8C8D4',
-    shadowOpacity: 0.1,
   },
   payButtonText: {
     color: '#FFFFFF',

@@ -9,6 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import QRCode from 'react-native-qrcode-svg';
@@ -24,17 +25,21 @@ type RootStackParamList = {
   Scanner: undefined;
   Cart: undefined;
   Payment: undefined;
-  QRCode: undefined;
+  QRCode: { qrCode: string; transactionId: string };
 };
 
 type QRCodeScreenNavigationProp = StackNavigationProp<RootStackParamList, 'QRCode'>;
+type QRCodeScreenRouteProp = RouteProp<RootStackParamList, 'QRCode'>;
 
 interface Props {
   navigation: QRCodeScreenNavigationProp;
+  route: QRCodeScreenRouteProp;
 }
 
-const QRCodeScreen: React.FC<Props> = ({ navigation }) => {
-  const { transactionId, qrCode, selectedStore, clearCart } = useCart();
+const QRCodeScreen: React.FC<Props> = ({ navigation, route }) => {
+  const { selectedStore, clearCart } = useCart(); // Don't rely on context for transaction details
+  const { qrCode, transactionId } = route.params || {}; // Get from params
+
   const [showQR, setShowQR] = useState(false);
   const [countdown, setCountdown] = useState(300); // 5 minutes
 
@@ -107,7 +112,7 @@ const QRCodeScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
+
       <Animated.View
         style={[
           styles.content,
@@ -145,15 +150,15 @@ const QRCodeScreen: React.FC<Props> = ({ navigation }) => {
                 color="#1A1A2E"
               />
             </View>
-            
+
             <View style={styles.qrInfo}>
               <Text style={styles.qrInstructions}>
                 Scan this QR code at the store exit
               </Text>
               <View style={styles.transactionInfo}>
                 <Ionicons name="receipt-outline" size={16} color="#6B7280" />
-                <Text style={styles.transactionId}>
-                  {transactionId?.slice(0, 20)}...
+                <Text style={styles.transactionId} numberOfLines={1} ellipsizeMode="middle">
+                  {transactionId}
                 </Text>
               </View>
             </View>

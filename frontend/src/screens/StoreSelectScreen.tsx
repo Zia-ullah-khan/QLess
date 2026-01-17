@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   StatusBar,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -54,7 +55,7 @@ const fetchStores = async (): Promise<Store[]> => {
 };
 
 const StoreSelectScreen: React.FC<Props> = ({ navigation }) => {
-  const { setSelectedStore, clearCart } = useCart();
+  const { setSelectedStore, clearCart, selectedStore, cartItems } = useCart();
   const [stores, setStores] = React.useState<Store[]>([]);
 
   React.useEffect(() => {
@@ -88,6 +89,28 @@ const StoreSelectScreen: React.FC<Props> = ({ navigation }) => {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* Resume Cart Banner */}
+        {selectedStore && cartItems.length > 0 && (
+          <View style={styles.resumeContainer}>
+            <View style={styles.resumeCard}>
+              <View style={styles.resumeInfo}>
+                <Text style={styles.resumeTitle}>Resume Shopping</Text>
+                <Text style={styles.resumeStore}>at {selectedStore.name}</Text>
+                <Text style={styles.resumeItems}>
+                  {cartItems.length} item{cartItems.length !== 1 ? 's' : ''} in cart
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.resumeButton}
+                onPress={() => navigation.navigate('Scanner')}
+              >
+                <Text style={styles.resumeButtonText}>Continue</Text>
+                <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         <Text style={styles.sectionTitle}>Nearby Stores</Text>
         <View style={styles.grid}>
           {stores.map((store: Store, index: number) => (
@@ -157,6 +180,61 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
+  },
+  resumeContainer: {
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  resumeCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#4A90A4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#F0F7FA',
+  },
+  resumeInfo: {
+    flex: 1,
+  },
+  resumeTitle: {
+    fontSize: 12,
+    ...typography.caption,
+    color: '#6B7280',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  resumeStore: {
+    fontSize: 18,
+    ...typography.headline,
+    color: '#1A1A2E',
+    marginBottom: 4,
+  },
+  resumeItems: {
+    fontSize: 14,
+    ...typography.body,
+    color: '#4A90A4',
+  },
+  resumeButton: {
+    backgroundColor: '#1A1A2E',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  resumeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    ...typography.button,
+    marginRight: 6,
   },
 });
 

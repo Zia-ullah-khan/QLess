@@ -209,7 +209,7 @@ These are the products with real barcodes for testing:
 Open `barcode-test.html` in a browser to view/print scannable barcodes:
 ```bash
 # Start a local server
-cd qless
+cd frontend
 python3 -m http.server 8888
 
 # Open in browser
@@ -221,7 +221,7 @@ open http://localhost:8888/barcode-test.html
 ## 📂 Project Structure
 
 ```
-qless/
+frontend/
 ├── App.tsx                     # Main app entry, navigation setup
 ├── index.ts                    # Expo entry point
 ├── package.json                # Dependencies
@@ -279,7 +279,7 @@ qless/
 ### Installation
 ```bash
 # Navigate to project
-cd qless
+cd frontend
 
 # Install dependencies
 npm install

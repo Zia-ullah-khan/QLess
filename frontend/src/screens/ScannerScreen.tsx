@@ -216,13 +216,6 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
 
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
-  // Debug: Test with a known barcode
-  const handleDebugScan = () => {
-    const testBarcode = '2990000000019'; // Nike Air Force 1
-    console.log('🧪 Debug scan triggered with:', testBarcode);
-    handleBarCodeScanned({ type: 'ean13', data: testBarcode });
-  };
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
@@ -282,14 +275,6 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
         </Animated.View>
 
         <Text style={styles.scanHint}>Position barcode within frame</Text>
-
-        {/* Debug button - tap to test scanning */}
-        <TouchableOpacity 
-          style={styles.debugButton} 
-          onPress={handleDebugScan}
-        >
-          <Text style={styles.debugButtonText}>🧪 Test Scan (Debug)</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Success Overlay */}
@@ -468,18 +453,6 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
-  },
-  debugButton: {
-    marginTop: 20,
-    backgroundColor: 'rgba(255, 165, 0, 0.9)',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-  },
-  debugButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    ...typography.button,
   },
   successOverlay: {
     ...StyleSheet.absoluteFillObject,

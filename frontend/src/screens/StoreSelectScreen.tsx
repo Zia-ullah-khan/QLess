@@ -40,7 +40,7 @@ type Store = {
 //pull stores from 'localhost:5000/api/getstores' now
 const fetchStores = async (): Promise<Store[]> => {
   try {
-    const response = await fetch('http://localhost:5000/api/getstores');
+    const response = await fetch('http://10.113.203.223:5000/api/getstores');
     const data: Store[] = await response.json();
     return data;
   } catch (error) {
@@ -48,10 +48,15 @@ const fetchStores = async (): Promise<Store[]> => {
     return [];
   }
 };
-const stores: Store[] = await fetchStores();
+// Stores data fetching moved inside component state
 
 const StoreSelectScreen: React.FC<Props> = ({ navigation }) => {
   const { setSelectedStore, clearCart } = useCart();
+  const [stores, setStores] = React.useState<Store[]>([]);
+
+  React.useEffect(() => {
+    fetchStores().then(setStores);
+  }, []);
 
   const handleStoreSelect = (store: Store) => {
     clearCart(); // Clear any previous cart
@@ -62,7 +67,6 @@ const StoreSelectScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
-      
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>

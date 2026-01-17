@@ -3,6 +3,8 @@ import cors from 'cors';
 import bodyParser from 'body-parser';
 import dotenv from 'dotenv';
 import connectDB from './config/database.js';
+import { scanBarcode } from './api/scan-barcode.js';
+import { checkout } from './api/checkout.js';
 
 dotenv.config();
 

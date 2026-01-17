@@ -60,6 +60,12 @@ export const checkout = async (req, res, next) => {
       verified: true // In a real flow, this might be false until scanned at gate
     });
 
+    //check the prices of all the items manually and conform that they add up to the total amount if not return 400 error
+    const calculatedTotal = transactionItems.reduce((acc, item) => acc + item.total_price, 0);
+    if (calculatedTotal !== totalAmount) {
+      return res.status(400).json({ message: "Total amount mismatch" });
+    }
+
     res.json({
       success: true,
       transactionId: savedTransaction._id,

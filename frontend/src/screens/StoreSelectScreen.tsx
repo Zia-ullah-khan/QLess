@@ -31,23 +31,29 @@ interface Props {
   navigation: StoreSelectScreenNavigationProp;
 }
 
-const stores = [
-  { id: 'nike', name: 'Nike', logo: 'nike' },
-  { id: 'under-armour', name: 'Under Armour', logo: 'under-armour' },
-  { id: 'walmart', name: 'Walmart', logo: 'walmart' },
-  { id: 'costco', name: 'Costco', logo: 'costco' },
-  { id: 'cvs', name: 'CVS', logo: 'cvs' },
-  { id: 'banana-republic', name: 'Banana Republic', logo: 'banana-republic' },
-  { id: 'bestbuy', name: 'Best Buy', logo: 'bestbuy' },
-  { id: 'wegmans', name: 'Wegmans', logo: 'wegmans' },
-  { id: 'zara', name: 'Zara', logo: 'zara' },
-  { id: 'gap', name: 'GAP', logo: 'gap' },
-];
+type Store = {
+  id: string;
+  name: string;
+  logo: string;
+};
+
+//pull stores from 'localhost:5000/api/getstores' now
+const fetchStores = async (): Promise<Store[]> => {
+  try {
+    const response = await fetch('http://localhost:5000/api/getstores');
+    const data: Store[] = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error fetching stores:', error);
+    return [];
+  }
+};
+const stores: Store[] = await fetchStores();
 
 const StoreSelectScreen: React.FC<Props> = ({ navigation }) => {
   const { setSelectedStore, clearCart } = useCart();
 
-  const handleStoreSelect = (store: { id: string; name: string; logo: string }) => {
+  const handleStoreSelect = (store: Store) => {
     clearCart(); // Clear any previous cart
     setSelectedStore(store);
     navigation.navigate('Scanner');
@@ -77,7 +83,7 @@ const StoreSelectScreen: React.FC<Props> = ({ navigation }) => {
       >
         <Text style={styles.sectionTitle}>Nearby Stores</Text>
         <View style={styles.grid}>
-          {stores.map((store, index) => (
+          {stores.map((store: Store, index: number) => (
             <StoreCard
               key={store.id}
               id={store.id}

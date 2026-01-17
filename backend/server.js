@@ -6,6 +6,7 @@ import connectDB from './config/database.js';
 import { scanBarcode } from './api/scan-barcode.js';
 import { checkout } from './api/checkout.js';
 import {generateQRForTransaction} from './api/qr-code.js';
+import {getStores} from './api/getstores.js';
 
 dotenv.config();
 
@@ -34,6 +35,7 @@ app.get('/api/generate-qr', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+app.get('/api/getstores', getStores);
 app.post('/api/scan-barcode', scanBarcode);
 app.post('/api/checkout', checkout);
 app.listen(PORT, () => {

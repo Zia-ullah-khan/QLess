@@ -1,18 +1,25 @@
-import mongoose from 'mongoose';
+import Product from '../model/product.js';
+
 export const scanBarcode = async (req, res, next) => {
-  const { barcode, storeid } = req.body;
-  //search database for barcode and storeid for now lets just return random values and simualte database call
-  //mockDatabaseCall(barcode, storeid, res);
-  //expected {
-  //"id": "nike-af1-goretex-vibram",
-  //"name": "Air Force 1 GORE-TEX Vibram",
-  //"price": 150.00,
-  //"barcode": "2990000000019",
-  //"image": "nike-af1-goretex-vibram"
- //}
-  res.json({id: "nike-af1-goretex-vibram",
-            name: "Air Force 1 GORE-TEX Vibram",
-            price: 150.00,
-            barcode: "2990000000019",
-            image: "nike-af1-goretex-vibram"});
+  try {
+    const { barcode, storeid } = req.body;
+
+    if (!barcode) {
+      return res.status(400).json({ message: "Barcode is required" });
+    }
+
+    // Find product by barcode
+    // Note: Assuming barcode_value is unique. 
+    // If strict store filtering is meant to happen, we could add { store_id: storeid } 
+    // but the schema says barcode_value is unique global or sparse.
+    const product = await Product.findOne({ barcode_value: barcode });
+
+    if (!product) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    res.json(product);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };

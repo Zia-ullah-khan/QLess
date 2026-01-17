@@ -1,45 +1,75 @@
-import connectDB from '../config/database.js';
+import Transaction from '../model/transaction.js';
+import TransactionItem from '../model/transactionItem.js';
+import Product from '../model/product.js';
+// import { v4 as uuidv4 } from 'uuid'; // Can use if we need to generate unique IDs, but ObjectId is fine.
+
 export const checkout = async (req, res, next) => {
-    //frontend wil return
-    //{
-  //"storeId": "nike",
-  //"items": [
-    //{ "id": "nike-af1-goretex-vibram", "quantity": 2 },
-    //{ "id": "nike-aj1-low-g", "quantity": 1 }
-  //],
-  //"paymentMethod": "apple_pay",
-  //"totalAmount": 491.40
-  //}}
-  const { storeId, items, paymentMethod, totalAmount } = req.body;
-  db = connectDB();
-  //search the database for storeID, the items and the ammount of each item and verify total amount
-  db.collection('stores').findOne({storeId: storeId}, (err, store) => {
-    if (err || !store) {
-      return res.status(400).json({success: false, message: "Store not found"});
+  const session = await Transaction.startSession();
+  session.startTransaction();
+
+  try {
+    const { storeId, items, paymentMethod, totalAmount, userId } = req.body;
+
+    if (!items || items.length === 0) {
+      return res.status(400).json({ message: "No items in checkout" });
     }
-    let calculatedTotal = 0;
-    for (let item of items) {
-      let storeItem = store.inventory.find(i => i.id === item.id);
-      if (!storeItem || storeItem.price * item.quantity !== item.totalPrice) {
-        return res.status(400).json({success: false, message: "Item verification failed"});
+
+    // 1. Create Transaction
+    const transaction = new Transaction({
+      store_id: storeId,
+      user_id: userId || null, // Optional
+      total_amount: totalAmount,
+      status: 'PAID', // Assuming successful payment for MVP/Simulation
+      payment_provider: paymentMethod ? paymentMethod.toUpperCase() : 'MOCK',
+    });
+
+    const savedTransaction = await transaction.save({ session });
+
+    // 2. Create Transaction Items
+    const transactionItems = [];
+    for (const item of items) {
+      // Fetch product to get unit price (security check) or rely on frontend?
+      // Better to fetch price from DB to avoid manipulation.
+      const product = await Product.findById(item.id).session(session);
+
+      if (!product) {
+        throw new Error(`Product not found: ${item.id}`);
       }
-      calculatedTotal += storeItem.price * item.quantity;
+
+      transactionItems.push({
+        transaction_id: savedTransaction._id,
+        product_id: product._id,
+        qty: item.quantity,
+        unit_price: product.price,
+        total_price: product.price * item.quantity
+      });
     }
-    if (calculatedTotal !== totalAmount) {
-      return res.status(400).json({success: false, message: "Total amount mismatch"});
-    }
-  });
-  //generate QR code logic here
-  //for now just return a mock QR code string
-  //we need to return
-  //{
-  //"success": true,
-  //"transactionId": "TXN-1737012345-ABC123XYZ",
-  //"qrCode": "{\"transactionId\":\"TXN-1737012345-ABC123XYZ\",\"storeId\":\"nike\",\"itemCount\":3,\"timestamp\":\"2026-01-17T12:00:00.000Z\",\"verified\":true}",
-  //"message": "Payment successful!"
-//}
-    res.json({success: true,
-              transactionId: "TXN-1737012345-ABC123XYZ",
-              qrCode: "{\"transactionId\":\"TXN-1737012345-ABC123XYZ\",\"storeId\":\"nike\",\"itemCount\":3,\"timestamp\":\"2026-01-17T12:00:00.000Z\",\"verified\":true}",
-              message: "Payment successful!"});
-}
+
+    await TransactionItem.insertMany(transactionItems, { session });
+
+    // Commit Transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // Mock QR Code generation (replace with real logic if needed)
+    const qrPayload = JSON.stringify({
+      transactionId: savedTransaction._id,
+      storeId: storeId,
+      itemCount: items.length,
+      timestamp: new Date(),
+      verified: true // In a real flow, this might be false until scanned at gate
+    });
+
+    res.json({
+      success: true,
+      transactionId: savedTransaction._id,
+      qrCode: qrPayload,
+      message: "Payment successful!"
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    res.status(500).json({ message: error.message });
+  }
+};

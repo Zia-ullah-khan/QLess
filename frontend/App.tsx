@@ -20,6 +20,7 @@ import PaymentErrorScreen from './src/screens/PaymentErrorScreen';
 import QRCodeScreen from './src/screens/QRCodeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import LiquidTestScreen from './src/screens/LiquidTestScreen';
 
 export type RootStackParamList = {
   Landing: undefined;
@@ -33,6 +34,7 @@ export type RootStackParamList = {
   Payment: undefined;
   PaymentError: { message: string };
   QRCode: { qrCode: string; transactionId: string };
+  LiquidTest: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -80,6 +82,7 @@ export default function App() {
                   <Stack.Screen name="QRCode" component={QRCodeScreen} />
                   <Stack.Screen name="AdminLogin" component={AdminLoginScreen} />
                   <Stack.Screen name="AdminPanel" component={AdminPanelScreen} />
+                  <Stack.Screen name="LiquidTest" component={LiquidTestScreen} />
                 </Stack.Navigator>
               </NavigationContainer>
             </StripeProvider>

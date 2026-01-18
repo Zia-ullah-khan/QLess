@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,14 +7,30 @@ import {
   Animated,
   StatusBar,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useCart } from '../context/CartContext';
 import { processCheckout } from '../services/api';
 import { typography } from '../theme/typography';
+import {
+  liquidGlassColors,
+  liquidShadow,
+  squircle,
+  liquidBlur,
+  getVibrantText,
+  glassColors,
+  glassShadow,
+  radius,
+} from '../theme/glass';
 import { useStripe } from '@stripe/stripe-react-native';
+import GlassSlider from '../components/GlassSlider';
+import LiquidGlassContainer from '../components/LiquidGlassContainer';
 
 type RootStackParamList = {
   Landing: undefined;
@@ -36,9 +52,38 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const { selectedStore, cartItems, getTotal, setTransactionId, setQrCode, clearCart } = useCart();
 
-  const total = getTotal() * 1.08; // Including tax
+  const total = getTotal();
+  const tax = total * 0.08;
+  const grandTotal = total + tax;
 
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+
+  // Animations
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const cardAnim = useRef(new Animated.Value(0)).current;
+  const methodAnim = useRef(new Animated.Value(0)).current;
+  const buttonAnim = useRef(new Animated.Value(50)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.stagger(100, [
+      Animated.spring(headerAnim, { toValue: 1, friction: 8, useNativeDriver: true }),
+      Animated.spring(cardAnim, { toValue: 1, friction: 8, useNativeDriver: true }),
+      Animated.spring(methodAnim, { toValue: 1, friction: 8, useNativeDriver: true }),
+      Animated.spring(buttonAnim, { toValue: 0, friction: 8, useNativeDriver: true }),
+    ]).start();
+
+    // Pulse animation for processing state
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.02, duration: 1000, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+
+    return () => pulse.stop();
+  }, []);
 
   const handlePayment = async () => {
     if (!selectedStore) return;
@@ -46,63 +91,51 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
     setIsProcessing(true);
 
     try {
-      // 1. Fetch PaymentIntent from backend
       const response = await fetch('http://10.113.203.223:5000/api/payment/sheet', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          totalAmount: total,
+          totalAmount: grandTotal,
           currency: 'usd',
         }),
       });
 
       const { paymentIntent, paymentIntentId, ephemeralKey, customer } = await response.json();
 
-      // 2. Initialize Payment Sheet
       const { error: initError } = await initPaymentSheet({
         merchantDisplayName: selectedStore.name,
         customerId: customer,
         customerEphemeralKeySecret: ephemeralKey,
         paymentIntentClientSecret: paymentIntent,
-        // Apple Pay / Google Pay are enabled by default if configured
-        applePay: {
-          merchantCountryCode: 'US',
-        },
-        googlePay: {
-          merchantCountryCode: 'US',
-          testEnv: true, // Set false for production
-        },
+        applePay: { merchantCountryCode: 'US' },
+        googlePay: { merchantCountryCode: 'US', testEnv: true },
       });
 
       if (initError) {
         console.error('Stripe Init Error:', initError);
-        alert(`Stripe Error: ${initError.message}`);
+        // Error haptic feedback
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+        navigation.navigate('PaymentError', { message: initError.message });
         setIsProcessing(false);
         return;
       }
 
-      // 3. Present Payment Sheet
       const { error: presentError } = await presentPaymentSheet();
 
       if (presentError) {
-        console.error('Stripe Present Error:', presentError);
-
-        // If it's a real error (not just user cancellation), show the error screen
         if (presentError.code !== 'Canceled') {
+          // Error haptic feedback
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          }
           navigation.navigate('PaymentError', {
             message: presentError.localizedMessage || presentError.message || 'Payment failed'
           });
         }
-
         setIsProcessing(false);
       } else {
-        // 4. Success! Now sync with our backend (create Transaction record)
-        // Extract PaymentIntent ID from client secret if needed, OR better: use the one returned by backend
-        // We need to update backend to return it.
-        // For now, let's assume valid paymentIntent string is passed.
-
         const checkoutResponse = await processCheckout(
           selectedStore.id,
           cartItems.map((item) => ({ id: item.id, quantity: item.quantity, price: item.price })),
@@ -111,6 +144,12 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
         );
 
         if (checkoutResponse.success) {
+          // Success haptic feedback - triple burst for celebration!
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium), 150);
+            setTimeout(() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy), 300);
+          }
           setTransactionId(checkoutResponse.transactionId);
           setQrCode(checkoutResponse.qrCode);
           clearCart();
@@ -119,279 +158,388 @@ const PaymentScreen: React.FC<Props> = ({ navigation }) => {
             transactionId: checkoutResponse.transactionId
           });
         } else {
-          alert('Payment success but backend sync failed.');
+          // Error haptic feedback
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          }
+          navigation.navigate('PaymentError', { message: 'Payment succeeded but sync failed' });
         }
         setIsProcessing(false);
       }
     } catch (error) {
       console.error('Payment error:', error);
-      alert('Payment failed');
+      // Error haptic feedback
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+      navigation.navigate('PaymentError', { message: 'An unexpected error occurred' });
       setIsProcessing(false);
     }
   };
 
+  const itemCount = cartItems.reduce((sum, i) => sum + i.quantity, 0);
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
+      
+      {/* Gradient Background */}
+      <LinearGradient
+        colors={['#F8FAFF', '#EEF2FF', '#F5F3FF', '#EEF2FF']}
+        locations={[0, 0.3, 0.6, 1]}
+        style={StyleSheet.absoluteFill}
+      />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={24} color="#1A1A2E" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Payment</Text>
-        <View style={{ width: 40 }} />
-      </View>
+      {/* Decorative orbs */}
+      <View style={[styles.decorativeOrb, styles.orb1]} />
+      <View style={[styles.decorativeOrb, styles.orb2]} />
 
-      {/* Order Summary */}
-      <View style={styles.summaryCard}>
-        <View style={styles.summaryHeader}>
-          <Ionicons name="receipt-outline" size={24} color="#4A90A4" />
-          <Text style={styles.summaryTitle}>Order Summary</Text>
-        </View>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>
-            {cartItems.reduce((sum, i) => sum + i.quantity, 0)} items
-          </Text>
-          <Text style={styles.summaryValue}>${(total / 1.08).toFixed(2)}</Text>
-        </View>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Tax</Text>
-          <Text style={styles.summaryValue}>${(total - total / 1.08).toFixed(2)}</Text>
-        </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryRow}>
-          <Text style={styles.totalLabel}>Total</Text>
-          <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
-        </View>
-      </View>
-
-      {/* Payment Methods - Simplified for Stripe */}
-      <View style={styles.methodsContainer}>
-        <View style={[styles.methodCard, styles.methodCardSelected]}>
-          <View style={[styles.methodIconContainer, { backgroundColor: '#E0E7FF' }]}>
-            <Ionicons name="card" size={24} color="#4338CA" />
-          </View>
-          <Text style={styles.methodName}>Credit/Debit Card & Wallets</Text>
-          <Ionicons name="checkmark-circle" size={22} color="#4A90A4" />
-        </View>
-      </View>
-
-      {/* Pay Button */}
-      <View style={styles.bottomContainer}>
-        <TouchableOpacity
+      <SafeAreaView style={styles.safeArea}>
+        {/* Glass Header */}
+        <Animated.View
           style={[
-            styles.payButton,
+            styles.header,
+            {
+              opacity: headerAnim,
+              transform: [{ translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }],
+            },
           ]}
-          onPress={handlePayment}
-          disabled={isProcessing}
-          activeOpacity={0.9}
         >
-          {isProcessing ? (
-            <>
-              <ActivityIndicator color="#FFFFFF" size="small" />
-              <Text style={styles.payButtonText}>Processing...</Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="card" size={18} color="#FFFFFF" />
-              <Text style={styles.payButtonText}>
-                Stripe Checkout ${total.toFixed(2)}
-              </Text>
-            </>
+          {Platform.OS !== 'web' && (
+            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
           )}
-        </TouchableOpacity>
-        <Text style={styles.secureText}>
-          <Ionicons name="shield-checkmark" size={12} color="#6B7280" /> Secure payment
-        </Text>
-      </View>
-    </SafeAreaView>
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.headerContent}>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={24} color={glassColors.text.primary} />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Payment</Text>
+            <View style={{ width: 44 }} />
+          </View>
+        </Animated.View>
+
+        {/* Order Summary Card */}
+        <Animated.View
+          style={[
+            styles.summaryCard,
+            {
+              opacity: cardAnim,
+              transform: [{ scale: cardAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) }],
+            },
+          ]}
+        >
+          {Platform.OS !== 'web' && (
+            <BlurView intensity={50} tint="light" style={StyleSheet.absoluteFill} />
+          )}
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.summaryContent}>
+            <View style={styles.summaryHeader}>
+              <View style={styles.summaryIconContainer}>
+                <LinearGradient
+                  colors={[glassColors.accent.primary, glassColors.accent.secondary]}
+                  style={styles.summaryIconGradient}
+                >
+                  <Ionicons name="receipt" size={22} color="#FFFFFF" />
+                </LinearGradient>
+              </View>
+              <Text style={styles.summaryTitle}>Order Summary</Text>
+            </View>
+            
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>{itemCount} items</Text>
+              <Text style={styles.summaryValue}>${total.toFixed(2)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Tax (8%)</Text>
+              <Text style={styles.summaryValue}>${tax.toFixed(2)}</Text>
+            </View>
+            <View style={styles.summaryDivider} />
+            <View style={styles.summaryRow}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalValue}>${grandTotal.toFixed(2)}</Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* Payment Method Card */}
+        <Animated.View
+          style={[
+            styles.methodCard,
+            {
+              opacity: methodAnim,
+              transform: [{ scale: methodAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) }],
+            },
+          ]}
+        >
+          {Platform.OS !== 'web' && (
+            <BlurView intensity={50} tint="light" style={StyleSheet.absoluteFill} />
+          )}
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.methodContent}>
+            <View style={styles.methodIconContainer}>
+              <LinearGradient
+                colors={['#4338CA', '#6366F1']}
+                style={styles.methodIconGradient}
+              >
+                <Ionicons name="card" size={24} color="#FFFFFF" />
+              </LinearGradient>
+            </View>
+            <View style={styles.methodInfo}>
+              <Text style={styles.methodName}>Secure Checkout</Text>
+              <Text style={styles.methodDescription}>Credit card, Apple Pay, Google Pay</Text>
+            </View>
+            <Ionicons name="checkmark-circle" size={26} color={glassColors.accent.primary} />
+          </View>
+        </Animated.View>
+
+        {/* Bottom Section */}
+        <Animated.View
+          style={[
+            styles.bottomContainer,
+            { transform: [{ translateY: buttonAnim }] },
+          ]}
+        >
+          {Platform.OS !== 'web' && (
+            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          )}
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.9)']}
+            style={StyleSheet.absoluteFill}
+          />
+          
+          {isProcessing ? (
+            <View style={styles.processingContainer}>
+              <ActivityIndicator color={glassColors.accent.primary} size="large" />
+              <Text style={styles.processingText}>Processing payment...</Text>
+            </View>
+          ) : (
+            <View style={styles.sliderContainer}>
+              <GlassSlider
+                title={`Slide to Pay $${grandTotal.toFixed(2)}`}
+                icon="shield-checkmark-outline"
+                onComplete={handlePayment}
+                gradient={[glassColors.accent.primary, glassColors.accent.secondary]}
+              />
+            </View>
+          )}
+          
+          <View style={styles.secureNote}>
+            <Ionicons name="lock-closed" size={14} color={glassColors.text.tertiary} />
+            <Text style={styles.secureText}>Secured by Stripe</Text>
+          </View>
+        </Animated.View>
+      </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFBFC',
   },
-  header: {
+  safeArea: {
+    flex: 1,
+  },
+  decorativeOrb: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  orb1: {
+    width: 280,
+    height: 280,
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    top: -80,
+    right: -100,
+  },
+  orb2: {
+    width: 200,
+    height: 200,
+    backgroundColor: 'rgba(236, 72, 153, 0.06)',
+    bottom: 150,
+    left: -70,
+  },
+  headerWrapper: {
+    marginHorizontal: 16,
+    marginTop: 8,
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#F5F5F5',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: glassColors.border.medium,
   },
   headerTitle: {
     fontSize: 20,
     ...typography.title,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
   },
   summaryCard: {
-    backgroundColor: '#FFFFFF',
-    margin: 20,
+    margin: 16,
+    borderRadius: radius.xxl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glassColors.border.light,
+    ...glassShadow.soft,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
+  },
+  summaryContent: {
     padding: 20,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
   },
   summaryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
+  },
+  summaryIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginRight: 12,
+  },
+  summaryIconGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   summaryTitle: {
-    fontSize: 17,
+    fontSize: 18,
     ...typography.headline,
-    color: '#1A1A2E',
-    marginLeft: 8,
+    color: glassColors.text.primary,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   summaryLabel: {
     fontSize: 15,
     ...typography.body,
-    color: '#6B7280',
+    color: glassColors.text.secondary,
   },
   summaryValue: {
     fontSize: 15,
     ...typography.body,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
   },
   summaryDivider: {
     height: 1,
-    backgroundColor: '#F0F0F0',
-    marginVertical: 12,
+    backgroundColor: glassColors.border.medium,
+    marginVertical: 14,
   },
   totalLabel: {
     fontSize: 17,
     ...typography.title,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
   },
   totalValue: {
-    fontSize: 20,
+    fontSize: 24,
     ...typography.title,
-    color: '#4A90A4',
-  },
-  sectionTitle: {
-    fontSize: 16,
-    ...typography.headline,
-    color: '#6B7280',
-    marginLeft: 20,
-    marginBottom: 12,
-  },
-  methodsContainer: {
-    paddingHorizontal: 20,
+    color: glassColors.accent.primary,
   },
   methodCard: {
+    marginHorizontal: 16,
+    borderRadius: radius.xxl,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: glassColors.accent.primary,
+    ...glassShadow.soft,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
+  },
+  methodContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  methodCardSelected: {
-    borderColor: '#4A90A4',
-    backgroundColor: '#F8FBFC',
+    padding: 18,
   },
   methodIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginRight: 16,
+  },
+  methodIconGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+  },
+  methodInfo: {
+    flex: 1,
   },
   methodName: {
-    flex: 1,
     fontSize: 16,
     ...typography.headline,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
   },
-  radioOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: '#D1D5DB',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#4A90A4',
+  methodDescription: {
+    fontSize: 13,
+    ...typography.body,
+    color: glassColors.text.secondary,
+    marginTop: 2,
   },
   bottomContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glassColors.border.light,
+    borderBottomWidth: 0,
     paddingHorizontal: 20,
     paddingTop: 20,
-    paddingBottom: 32,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 10,
+    paddingBottom: 36,
+    ...glassShadow.medium,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
   },
-  payButton: {
+  sliderContainer: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  processingContainer: {
+    alignItems: 'center',
+    paddingVertical: 16,
+    marginBottom: 8,
+  },
+  processingText: {
+    fontSize: 16,
+    ...typography.body,
+    color: glassColors.text.secondary,
+    marginTop: 12,
+  },
+  secureNote: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#4A90A4',
-    paddingVertical: 18,
-    borderRadius: 16,
-    shadowColor: '#4A90A4',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  payButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    ...typography.button,
-    marginLeft: 8,
+    marginTop: 14,
   },
   secureText: {
-    textAlign: 'center',
-    color: '#6B7280',
+    color: glassColors.text.tertiary,
     fontSize: 13,
     ...typography.caption,
-    marginTop: 12,
+    marginLeft: 6,
   },
 });
 

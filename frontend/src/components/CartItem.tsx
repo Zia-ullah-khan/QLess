@@ -7,10 +7,14 @@ import {
   Animated,
   Image,
   ImageSourcePropType,
+  Platform,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { CartItem as CartItemType } from '../context/CartContext';
 import { typography } from '../theme/typography';
+import { glassColors, glassShadow, radius } from '../theme/glass';
 
 // Product images mapping
 const productImages: Record<string, ImageSourcePropType> = {
@@ -32,21 +36,28 @@ const CartItem: React.FC<CartItemProps> = ({
   onUpdateQuantity,
   index,
 }) => {
-  const slideAnim = useRef(new Animated.Value(50)).current;
+  const slideAnim = useRef(new Animated.Value(60)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: 0,
-        duration: 300,
-        delay: index * 60,
+        duration: 350,
+        delay: index * 80,
         useNativeDriver: true,
       }),
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 300,
-        delay: index * 60,
+        duration: 350,
+        delay: index * 80,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        delay: index * 80,
         useNativeDriver: true,
       }),
     ]).start();
@@ -64,10 +75,17 @@ const CartItem: React.FC<CartItemProps> = ({
         duration: 200,
         useNativeDriver: true,
       }),
+      Animated.timing(scaleAnim, {
+        toValue: 0.8,
+        duration: 200,
+        useNativeDriver: true,
+      }),
     ]).start(() => {
       onRemove();
     });
   };
+
+  const itemTotal = (item.price * item.quantity).toFixed(2);
 
   return (
     <Animated.View
@@ -75,12 +93,30 @@ const CartItem: React.FC<CartItemProps> = ({
         styles.container,
         {
           opacity: fadeAnim,
-          transform: [{ translateX: slideAnim }],
+          transform: [
+            { translateX: slideAnim },
+            { scale: scaleAnim },
+          ],
         },
       ]}
     >
-      <View style={styles.itemInfo}>
-        <View style={styles.iconContainer}>
+      {/* Glass background */}
+      {Platform.OS !== 'web' && (
+        <BlurView intensity={50} tint="light" style={StyleSheet.absoluteFill} />
+      )}
+      <LinearGradient
+        colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.75)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      
+      {/* Top highlight */}
+      <View style={styles.topHighlight} />
+
+      <View style={styles.content}>
+        {/* Product Image */}
+        <View style={styles.imageContainer}>
           {(item.image && (item.image.startsWith('http') || item.image.startsWith('https'))) ? (
             <Image
               source={{ uri: item.image }}
@@ -94,115 +130,161 @@ const CartItem: React.FC<CartItemProps> = ({
               resizeMode="contain"
             />
           ) : (
-            <Ionicons name="cube-outline" size={24} color="#4A90A4" />
+            <LinearGradient
+              colors={[glassColors.accent.primary, glassColors.accent.secondary]}
+              style={styles.imagePlaceholder}
+            >
+              <Ionicons name="cube" size={24} color="#FFFFFF" />
+            </LinearGradient>
           )}
         </View>
+
+        {/* Item Details */}
         <View style={styles.details}>
-          <Text style={styles.itemName} numberOfLines={1}>
+          <Text style={styles.itemName} numberOfLines={2}>
             {item.name}
           </Text>
-          <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
+          <View style={styles.priceRow}>
+            <Text style={styles.itemPrice}>${item.price.toFixed(2)}</Text>
+            {item.quantity > 1 && (
+              <Text style={styles.itemTotal}>× {item.quantity} = ${itemTotal}</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Quantity Controls */}
+        <View style={styles.controls}>
+          <View style={styles.quantityContainer}>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => onUpdateQuantity(item.quantity - 1)}
+            >
+              <Ionicons name="remove" size={18} color={glassColors.accent.primary} />
+            </TouchableOpacity>
+            <Text style={styles.quantity}>{item.quantity}</Text>
+            <TouchableOpacity
+              style={styles.quantityButton}
+              onPress={() => onUpdateQuantity(item.quantity + 1)}
+            >
+              <Ionicons name="add" size={18} color={glassColors.accent.primary} />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.removeButton} onPress={handleRemove}>
+            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+          </TouchableOpacity>
         </View>
       </View>
-
-      <View style={styles.quantityContainer}>
-        <TouchableOpacity
-          style={styles.quantityButton}
-          onPress={() => onUpdateQuantity(item.quantity - 1)}
-        >
-          <Ionicons name="remove" size={18} color="#4A90A4" />
-        </TouchableOpacity>
-        <Text style={styles.quantity}>{item.quantity}</Text>
-        <TouchableOpacity
-          style={styles.quantityButton}
-          onPress={() => onUpdateQuantity(item.quantity + 1)}
-        >
-          <Ionicons name="add" size={18} color="#4A90A4" />
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity style={styles.removeButton} onPress={handleRemove}>
-        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-      </TouchableOpacity>
     </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    borderRadius: radius.xl,
+    marginBottom: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glassColors.border.light,
+    ...glassShadow.soft,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
+  },
+  topHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 20,
+    right: 20,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  content: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    padding: 14,
+  },
+  imageContainer: {
+    width: 64,
+    height: 64,
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  itemInfo: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 12,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 14,
     overflow: 'hidden',
+    ...glassShadow.soft,
   },
   productImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
+    width: 56,
+    height: 56,
+  },
+  imagePlaceholder: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   details: {
     flex: 1,
+    marginRight: 12,
   },
   itemName: {
     fontSize: 15,
     ...typography.headline,
-    color: '#1A1A2E',
-    marginBottom: 4,
+    color: glassColors.text.primary,
+    marginBottom: 6,
+    lineHeight: 20,
+  },
+  priceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
   itemPrice: {
-    fontSize: 14,
+    fontSize: 16,
+    ...typography.headline,
+    color: glassColors.accent.primary,
+  },
+  itemTotal: {
+    fontSize: 13,
     ...typography.body,
-    color: '#4A90A4',
+    color: glassColors.text.tertiary,
+    marginLeft: 6,
+  },
+  controls: {
+    alignItems: 'flex-end',
   },
   quantityContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
     borderRadius: 12,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginRight: 12,
+    padding: 4,
+    marginBottom: 10,
   },
   quantityButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    ...glassShadow.soft,
   },
   quantity: {
-    fontSize: 15,
+    fontSize: 16,
     ...typography.headline,
-    color: '#1A1A2E',
-    marginHorizontal: 12,
+    color: glassColors.text.primary,
+    marginHorizontal: 14,
     minWidth: 20,
     textAlign: 'center',
   },
   removeButton: {
-    padding: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

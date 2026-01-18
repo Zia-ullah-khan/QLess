@@ -10,6 +10,8 @@ import {
   Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { useIsFocused } from '@react-navigation/native';
@@ -18,17 +20,16 @@ import { useCart } from '../context/CartContext';
 import { scanBarcode } from '../services/api';
 import AnimatedCheckmark from '../components/AnimatedCheckmark';
 import { typography } from '../theme/typography';
+import { glassColors, glassShadow, radius } from '../theme/glass';
 
 const { width, height } = Dimensions.get('window');
-const SCAN_AREA_SIZE = width * 0.7;
+const SCAN_AREA_SIZE = width * 0.72;
 
 type RootStackParamList = {
   Landing: undefined;
   StoreSelect: undefined;
   Scanner: undefined;
   Cart: undefined;
-  Payment: undefined;
-  QRCode: undefined;
 };
 
 type ScannerScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Scanner'>;
@@ -37,8 +38,6 @@ interface Props {
   navigation: ScannerScreenNavigationProp;
 }
 
-
-
 const ScannerScreen: React.FC<Props> = ({ navigation }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
@@ -46,19 +45,19 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
   const [showError, setShowError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [lastScannedItem, setLastScannedItem] = useState<string | null>(null);
+  const [lastScannedPrice, setLastScannedPrice] = useState<number | null>(null);
   const { selectedStore, cartItems, addToCart } = useCart();
 
-  // Only run camera when screen is focused
   const isFocused = useIsFocused();
-
-  // Use ref to prevent race condition with double scanning
   const isScanningRef = useRef(false);
 
   // Animations
   const scanLineAnim = useRef(new Animated.Value(0)).current;
   const itemCardAnim = useRef(new Animated.Value(100)).current;
   const itemCardOpacity = useRef(new Animated.Value(0)).current;
-  const overlayPulse = useRef(new Animated.Value(1)).current;
+  const cornerPulse = useRef(new Animated.Value(1)).current;
+  const successScale = useRef(new Animated.Value(0)).current;
+  const errorShake = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     // Animate scan line
@@ -66,28 +65,28 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
       Animated.sequence([
         Animated.timing(scanLineAnim, {
           toValue: 1,
-          duration: 2000,
+          duration: 2500,
           useNativeDriver: true,
         }),
         Animated.timing(scanLineAnim, {
           toValue: 0,
-          duration: 2000,
+          duration: 2500,
           useNativeDriver: true,
         }),
       ])
     ).start();
 
-    // Pulse animation for overlay
+    // Pulse animation for corners
     Animated.loop(
       Animated.sequence([
-        Animated.timing(overlayPulse, {
-          toValue: 1.02,
-          duration: 1000,
+        Animated.timing(cornerPulse, {
+          toValue: 1.05,
+          duration: 1200,
           useNativeDriver: true,
         }),
-        Animated.timing(overlayPulse, {
+        Animated.timing(cornerPulse, {
           toValue: 1,
-          duration: 1000,
+          duration: 1200,
           useNativeDriver: true,
         }),
       ])
@@ -95,21 +94,11 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
-    // Prevent double-scan - check ref FIRST (state updates are async)
-    if (isScanningRef.current) {
-      console.log('⏭️ Ignoring duplicate scan');
-      return;
-    }
+    if (isScanningRef.current) return;
 
-    console.log('🔍 Barcode detected:', type, data);
-
-    // Set ref immediately to block any subsequent scans
     isScanningRef.current = true;
     setScanned(true);
 
-    console.log('✅ Processing barcode:', data);
-
-    // Haptic feedback
     if (Platform.OS !== 'web') {
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
@@ -119,10 +108,8 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
         throw new Error('No store selected');
       }
 
-      // Call backend API
       const item = await scanBarcode(selectedStore.id, data);
 
-      // Add to cart
       addToCart({
         id: item.id,
         name: item.name,
@@ -132,18 +119,26 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
       });
 
       setLastScannedItem(item.name);
+      setLastScannedPrice(item.price);
       setShowSuccess(true);
+
+      // Success animation
+      Animated.spring(successScale, {
+        toValue: 1,
+        friction: 5,
+        useNativeDriver: true,
+      }).start();
 
       // Animate item card
       Animated.parallel([
         Animated.spring(itemCardAnim, {
           toValue: 0,
-          friction: 6,
+          friction: 7,
           useNativeDriver: true,
         }),
         Animated.timing(itemCardOpacity, {
           toValue: 1,
-          duration: 200,
+          duration: 250,
           useNativeDriver: true,
         }),
       ]).start();
@@ -151,53 +146,64 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
       // Reset after delay
       setTimeout(() => {
         setShowSuccess(false);
+        successScale.setValue(0);
         Animated.parallel([
           Animated.timing(itemCardAnim, {
             toValue: 100,
-            duration: 200,
+            duration: 250,
             useNativeDriver: true,
           }),
           Animated.timing(itemCardOpacity, {
             toValue: 0,
-            duration: 200,
+            duration: 250,
             useNativeDriver: true,
           }),
         ]).start(() => {
           setScanned(false);
           isScanningRef.current = false;
           setLastScannedItem(null);
+          setLastScannedPrice(null);
         });
-      }, 1500);
+      }, 1800);
     } catch (error) {
       console.error('Scan error:', error);
 
-      // Show error message for unknown barcodes
       setErrorMessage('Product not found');
       setShowError(true);
 
-      // Haptic feedback for error
+      // Shake animation
+      Animated.sequence([
+        Animated.timing(errorShake, { toValue: 10, duration: 50, useNativeDriver: true }),
+        Animated.timing(errorShake, { toValue: -10, duration: 50, useNativeDriver: true }),
+        Animated.timing(errorShake, { toValue: 10, duration: 50, useNativeDriver: true }),
+        Animated.timing(errorShake, { toValue: 0, duration: 50, useNativeDriver: true }),
+      ]).start();
+
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
 
-      // Reset after delay
       setTimeout(() => {
         setShowError(false);
         setErrorMessage(null);
         setScanned(false);
         isScanningRef.current = false;
-      }, 1500);
+      }, 1800);
     }
   };
 
   const scanLineTranslate = scanLineAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, SCAN_AREA_SIZE - 4],
+    outputRange: [0, SCAN_AREA_SIZE - 6],
   });
 
   if (!permission) {
     return (
       <View style={styles.container}>
+        <LinearGradient
+          colors={['#1A1A2E', '#2D2D44']}
+          style={StyleSheet.absoluteFill}
+        />
         <Text style={styles.permissionText}>Requesting camera permission...</Text>
       </View>
     );
@@ -206,15 +212,41 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
   if (!permission.granted) {
     return (
       <View style={styles.permissionContainer}>
+        <LinearGradient
+          colors={['#F8FAFF', '#EEF2FF', '#E0E7FF']}
+          style={StyleSheet.absoluteFill}
+        />
         <View style={styles.permissionCard}>
-          <Ionicons name="camera-outline" size={64} color="#4A90A4" />
-          <Text style={styles.permissionTitle}>Camera Access Required</Text>
-          <Text style={styles.permissionDescription}>
-            QLess needs camera access to scan product barcodes
-          </Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-            <Text style={styles.permissionButtonText}>Grant Access</Text>
-          </TouchableOpacity>
+          {Platform.OS !== 'web' && (
+            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          )}
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.permissionContent}>
+            <View style={styles.permissionIconContainer}>
+              <LinearGradient
+                colors={[glassColors.accent.primary, glassColors.accent.secondary]}
+                style={styles.permissionIconGradient}
+              >
+                <Ionicons name="camera" size={40} color="#FFFFFF" />
+              </LinearGradient>
+            </View>
+            <Text style={styles.permissionTitle}>Camera Access</Text>
+            <Text style={styles.permissionDescription}>
+              QLess needs camera access to scan product barcodes and make your shopping faster.
+            </Text>
+            <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+              <LinearGradient
+                colors={[glassColors.accent.primary, glassColors.accent.secondary]}
+                style={styles.permissionButtonGradient}
+              >
+                <Ionicons name="checkmark" size={20} color="#FFFFFF" />
+                <Text style={styles.permissionButtonText}>Grant Access</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
@@ -226,7 +258,6 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      {/* Only render camera when screen is focused to save resources */}
       {isFocused && (
         <CameraView
           style={styles.camera}
@@ -238,23 +269,48 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
         />
       )}
 
-      {/* Header Overlay */}
+      {/* Dark vignette overlay */}
+      <LinearGradient
+        colors={['rgba(0,0,0,0.5)', 'transparent', 'transparent', 'rgba(0,0,0,0.5)']}
+        locations={[0, 0.3, 0.7, 1]}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+
+      {/* Header Overlay with Glass effect */}
       <View style={styles.headerOverlay}>
-        <View style={styles.storeInfo}>
-          <Ionicons name="location" size={16} color="#FFFFFF" />
-          <Text style={styles.storeName}>{selectedStore?.name || 'Store'}</Text>
+        {Platform.OS !== 'web' && (
+          <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+        )}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.4)', 'rgba(0,0,0,0.2)']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.headerContent}>
+          <TouchableOpacity 
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          
+          <View style={styles.storeInfo}>
+            <View style={styles.storeDot} />
+            <Text style={styles.storeName}>{selectedStore?.name || 'Store'}</Text>
+          </View>
+          
+          <TouchableOpacity
+            style={styles.cartButton}
+            onPress={() => navigation.navigate('Cart')}
+          >
+            <Ionicons name="bag-outline" size={22} color="#FFFFFF" />
+            {cartCount > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={styles.cartButton}
-          onPress={() => navigation.navigate('Cart')}
-        >
-          <Ionicons name="cart-outline" size={24} color="#FFFFFF" />
-          {cartCount > 0 && (
-            <View style={styles.cartBadge}>
-              <Text style={styles.cartBadgeText}>{cartCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
       </View>
 
       {/* Scan Area */}
@@ -262,44 +318,96 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
         <Animated.View
           style={[
             styles.scanArea,
-            { transform: [{ scale: overlayPulse }] },
+            { transform: [{ scale: cornerPulse }] },
           ]}
         >
-          {/* Corner brackets */}
-          <View style={[styles.corner, styles.topLeft]} />
-          <View style={[styles.corner, styles.topRight]} />
-          <View style={[styles.corner, styles.bottomLeft]} />
-          <View style={[styles.corner, styles.bottomRight]} />
+          {/* Corner brackets with gradient */}
+          <View style={[styles.corner, styles.topLeft]}>
+            <LinearGradient
+              colors={[glassColors.accent.primary, glassColors.accent.cyan]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cornerGradient}
+            />
+          </View>
+          <View style={[styles.corner, styles.topRight]}>
+            <LinearGradient
+              colors={[glassColors.accent.cyan, glassColors.accent.primary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cornerGradient}
+            />
+          </View>
+          <View style={[styles.corner, styles.bottomLeft]}>
+            <LinearGradient
+              colors={[glassColors.accent.primary, glassColors.accent.secondary]}
+              start={{ x: 0, y: 1 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.cornerGradient}
+            />
+          </View>
+          <View style={[styles.corner, styles.bottomRight]}>
+            <LinearGradient
+              colors={[glassColors.accent.secondary, glassColors.accent.tertiary]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.cornerGradient}
+            />
+          </View>
 
-          {/* Scan line */}
+          {/* Scan line with glow */}
           <Animated.View
             style={[
               styles.scanLine,
               { transform: [{ translateY: scanLineTranslate }] },
             ]}
-          />
+          >
+            <LinearGradient
+              colors={['transparent', glassColors.accent.emerald, 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.scanLineGradient}
+            />
+          </Animated.View>
         </Animated.View>
 
-        <Text style={styles.scanHint}>Position barcode within frame</Text>
+        <View style={styles.scanHintContainer}>
+          <Text style={styles.scanHint}>Position barcode within frame</Text>
+        </View>
       </View>
 
       {/* Success Overlay */}
       {showSuccess && (
-        <View style={styles.successOverlay}>
-          <AnimatedCheckmark size={60} />
-          <Text style={styles.successText}>Added to Cart!</Text>
+        <View style={styles.feedbackOverlay}>
+          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+          <Animated.View style={{ transform: [{ scale: successScale }] }}>
+            <View style={styles.successCircle}>
+              <LinearGradient
+                colors={[glassColors.accent.emerald, '#059669']}
+                style={StyleSheet.absoluteFill}
+              />
+              <AnimatedCheckmark size={50} color="transparent" />
+              <Ionicons name="checkmark" size={50} color="#FFFFFF" style={{ position: 'absolute' }} />
+            </View>
+          </Animated.View>
+          <Text style={styles.feedbackTitle}>Added to Cart!</Text>
         </View>
       )}
 
       {/* Error Overlay */}
       {showError && (
-        <View style={styles.errorOverlay}>
-          <View style={styles.errorIcon}>
-            <Ionicons name="close" size={40} color="#FFFFFF" />
+        <Animated.View style={[styles.feedbackOverlay, { transform: [{ translateX: errorShake }] }]}>
+          <BlurView intensity={80} tint="dark" style={StyleSheet.absoluteFill} />
+          <View style={styles.errorCircle}>
+            <LinearGradient
+              colors={['#EF4444', '#DC2626']}
+              style={StyleSheet.absoluteFill}
+            />
+            <Ionicons name="close" size={50} color="#FFFFFF" />
           </View>
-          <Text style={styles.errorText}>{errorMessage}</Text>
-          <Text style={styles.errorHint}>Try scanning a valid product barcode</Text>
-        </View>
+          <Text style={styles.feedbackTitle}>{errorMessage}</Text>
+          <Text style={styles.feedbackSubtitle}>Try scanning a valid product</Text>
+        </Animated.View>
       )}
 
       {/* Item Card */}
@@ -312,26 +420,61 @@ const ScannerScreen: React.FC<Props> = ({ navigation }) => {
           },
         ]}
       >
-        <View style={styles.itemCardIcon}>
-          <Ionicons name="cube" size={24} color="#4A90A4" />
+        {Platform.OS !== 'web' && (
+          <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+        )}
+        <LinearGradient
+          colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.85)']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.itemCardContent}>
+          <View style={styles.itemCardIcon}>
+            <LinearGradient
+              colors={[glassColors.accent.emerald, '#059669']}
+              style={styles.itemCardIconGradient}
+            >
+              <Ionicons name="cube" size={22} color="#FFFFFF" />
+            </LinearGradient>
+          </View>
+          <View style={styles.itemCardInfo}>
+            <Text style={styles.itemCardText} numberOfLines={1}>
+              {lastScannedItem}
+            </Text>
+            {lastScannedPrice && (
+              <Text style={styles.itemCardPrice}>${lastScannedPrice.toFixed(2)}</Text>
+            )}
+          </View>
+          <View style={styles.itemCardCheck}>
+            <Ionicons name="checkmark-circle" size={26} color={glassColors.accent.emerald} />
+          </View>
         </View>
-        <Text style={styles.itemCardText} numberOfLines={1}>
-          {lastScannedItem}
-        </Text>
-        <Ionicons name="checkmark-circle" size={24} color="#4CAF50" />
       </Animated.View>
 
-      {/* Bottom Actions */}
+      {/* Bottom Actions with Glass */}
       <View style={styles.bottomActions}>
+        {Platform.OS !== 'web' && (
+          <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+        )}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.3)', 'rgba(0,0,0,0.5)']}
+          style={StyleSheet.absoluteFill}
+        />
         <TouchableOpacity
           style={styles.checkoutButton}
           onPress={() => navigation.navigate('Cart')}
           activeOpacity={0.9}
         >
-          <Ionicons name="bag-check-outline" size={22} color="#FFFFFF" />
-          <Text style={styles.checkoutButtonText}>
-            Checkout {cartCount > 0 ? `(${cartCount})` : ''}
-          </Text>
+          <LinearGradient
+            colors={[glassColors.accent.primary, glassColors.accent.secondary]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.checkoutButtonGradient}
+          >
+            <Ionicons name="bag-check" size={22} color="#FFFFFF" />
+            <Text style={styles.checkoutButtonText}>
+              View Cart {cartCount > 0 ? `(${cartCount})` : ''}
+            </Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
     </View>
@@ -351,50 +494,76 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    paddingTop: 50,
+    paddingBottom: 16,
+    borderBottomLeftRadius: radius.xxl,
+    borderBottomRightRadius: radius.xxl,
+    overflow: 'hidden',
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 60,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+  },
+  backButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   storeInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  storeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: glassColors.accent.emerald,
+    marginRight: 8,
   },
   storeName: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 15,
     ...typography.headline,
-    marginLeft: 6,
   },
   cartButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   cartBadge: {
     position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 20,
+    top: -4,
+    right: -4,
+    minWidth: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#FF6B6B',
+    backgroundColor: glassColors.accent.tertiary,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 6,
   },
   cartBadgeText: {
     color: '#FFFFFF',
     fontSize: 11,
-    ...typography.title,
+    ...typography.headline,
   },
   scanAreaContainer: {
     ...StyleSheet.absoluteFillObject,
@@ -408,92 +577,103 @@ const styles = StyleSheet.create({
   },
   corner: {
     position: 'absolute',
-    width: 40,
-    height: 40,
-    borderColor: '#4A90A4',
-    borderWidth: 4,
+    width: 50,
+    height: 50,
+    overflow: 'hidden',
+  },
+  cornerGradient: {
+    position: 'absolute',
+    width: 50,
+    height: 50,
   },
   topLeft: {
     top: 0,
     left: 0,
-    borderRightWidth: 0,
-    borderBottomWidth: 0,
-    borderTopLeftRadius: 12,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+    borderTopLeftRadius: 16,
+    borderColor: 'transparent',
   },
   topRight: {
     top: 0,
     right: 0,
-    borderLeftWidth: 0,
-    borderBottomWidth: 0,
-    borderTopRightRadius: 12,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+    borderTopRightRadius: 16,
+    borderColor: 'transparent',
   },
   bottomLeft: {
     bottom: 0,
     left: 0,
-    borderRightWidth: 0,
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 12,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+    borderBottomLeftRadius: 16,
+    borderColor: 'transparent',
   },
   bottomRight: {
     bottom: 0,
     right: 0,
-    borderLeftWidth: 0,
-    borderTopWidth: 0,
-    borderBottomRightRadius: 12,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+    borderBottomRightRadius: 16,
+    borderColor: 'transparent',
   },
   scanLine: {
     width: '100%',
-    height: 3,
-    backgroundColor: '#4CAF50',
+    height: 4,
+    overflow: 'visible',
+  },
+  scanLineGradient: {
+    width: '100%',
+    height: 4,
     borderRadius: 2,
-    shadowColor: '#4CAF50',
+    shadowColor: glassColors.accent.emerald,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
+    shadowOpacity: 1,
+    shadowRadius: 15,
+  },
+  scanHintContainer: {
+    marginTop: 24,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 20,
   },
   scanHint: {
-    color: '#FFFFFF',
+    color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 14,
     ...typography.body,
+  },
+  feedbackOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    ...glassShadow.glow,
+  },
+  errorCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  feedbackTitle: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    ...typography.title,
     marginTop: 20,
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
   },
-  successOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  successText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    ...typography.title,
-    marginTop: 16,
-  },
-  errorOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  errorIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#FF6B6B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  errorText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    ...typography.title,
-    marginTop: 16,
-  },
-  errorHint: {
-    color: 'rgba(255,255,255,0.7)',
+  feedbackSubtitle: {
+    color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 14,
     ...typography.body,
     marginTop: 8,
@@ -503,31 +683,46 @@ const styles = StyleSheet.create({
     bottom: 140,
     left: 20,
     right: 20,
+    borderRadius: radius.xl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glassColors.border.light,
+    ...glassShadow.medium,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
+  },
+  itemCardContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
     padding: 16,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 8,
   },
   itemCardIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#F0F7FA',
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginRight: 14,
+  },
+  itemCardIconGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+  },
+  itemCardInfo: {
+    flex: 1,
   },
   itemCardText: {
-    flex: 1,
     fontSize: 16,
     ...typography.headline,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
+  },
+  itemCardPrice: {
+    fontSize: 14,
+    ...typography.body,
+    color: glassColors.accent.emerald,
+    marginTop: 2,
+  },
+  itemCardCheck: {
+    marginLeft: 8,
   },
   bottomActions: {
     position: 'absolute',
@@ -535,70 +730,93 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 20,
+    paddingTop: 20,
     paddingBottom: 40,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    overflow: 'hidden',
   },
   checkoutButton: {
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    ...glassShadow.glow,
+  },
+  checkoutButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1A1A2E',
     paddingVertical: 18,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
   },
   checkoutButtonText: {
     color: '#FFFFFF',
     fontSize: 17,
     ...typography.button,
-    marginLeft: 8,
+    marginLeft: 10,
   },
   permissionContainer: {
     flex: 1,
-    backgroundColor: '#FAFBFC',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
   },
   permissionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: radius.xxl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glassColors.border.light,
+    ...glassShadow.medium,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.9)' : 'transparent',
+  },
+  permissionContent: {
     padding: 32,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 8,
+  },
+  permissionIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    overflow: 'hidden',
+    marginBottom: 24,
+    ...glassShadow.glow,
+  },
+  permissionIconGradient: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   permissionTitle: {
-    fontSize: 22,
+    fontSize: 24,
     ...typography.title,
-    color: '#1A1A2E',
-    marginTop: 20,
-    marginBottom: 8,
+    color: glassColors.text.primary,
+    marginBottom: 12,
   },
   permissionDescription: {
     fontSize: 15,
     ...typography.body,
-    color: '#6B7280',
+    color: glassColors.text.secondary,
     textAlign: 'center',
-    marginBottom: 24,
     lineHeight: 22,
+    marginBottom: 28,
   },
   permissionButton: {
-    backgroundColor: '#4A90A4',
-    paddingVertical: 14,
-    paddingHorizontal: 32,
-    borderRadius: 12,
+    width: '100%',
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    ...glassShadow.glow,
+  },
+  permissionButtonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
   },
   permissionButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     ...typography.button,
+    marginLeft: 8,
   },
   permissionText: {
     color: '#FFFFFF',

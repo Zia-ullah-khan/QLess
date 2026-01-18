@@ -7,13 +7,31 @@ import {
   ScrollView,
   Animated,
   StatusBar,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useCart } from '../context/CartContext';
 import CartItem from '../components/CartItem';
+import GlassSlider from '../components/GlassSlider';
 import { typography } from '../theme/typography';
+import {
+  liquidGlassColors,
+  liquidShadow,
+  squircle,
+  liquidBlur,
+  getVibrantText,
+  glassColors,
+  glassShadow,
+  radius,
+} from '../theme/glass';
+import LiquidGlassContainer from '../components/LiquidGlassContainer';
+
+const { width } = Dimensions.get('window');
 
 type RootStackParamList = {
   Landing: undefined;
@@ -21,7 +39,6 @@ type RootStackParamList = {
   Scanner: undefined;
   Cart: undefined;
   Payment: undefined;
-  QRCode: undefined;
 };
 
 type CartScreenNavigationProp = StackNavigationProp<RootStackParamList, 'Cart'>;
@@ -31,67 +48,129 @@ interface Props {
 }
 
 const CartScreen: React.FC<Props> = ({ navigation }) => {
-  const { cartItems, removeFromCart, updateQuantity, getTotal } = useCart();
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
+  const { cartItems, removeFromCart, updateQuantity, getTotal, selectedStore } = useCart();
+
+  // Animations
+  const headerAnim = useRef(new Animated.Value(0)).current;
+  const emptyAnim = useRef(new Animated.Value(0)).current;
+  const bottomAnim = useRef(new Animated.Value(100)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(slideAnim, {
+    // Header entrance
+    Animated.spring(headerAnim, {
+      toValue: 1,
+      friction: 8,
+      tension: 50,
+      useNativeDriver: true,
+    }).start();
+
+    // Bottom summary entrance
+    if (cartItems.length > 0) {
+      Animated.spring(bottomAnim, {
         toValue: 0,
         friction: 8,
+        delay: 200,
         useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, slideAnim]);
+      }).start();
+    }
+
+    // Empty state animation
+    if (cartItems.length === 0) {
+      Animated.spring(emptyAnim, {
+        toValue: 1,
+        friction: 8,
+        delay: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [cartItems.length]);
 
   const total = getTotal();
+  const tax = total * 0.08;
+  const grandTotal = total + tax;
   const itemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const subtitle =
-    itemCount === 0
-      ? 'Start scanning to add items'
-      : `${itemCount} item${itemCount === 1 ? '' : 's'} in cart`;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="#1A1A2E" />
-        </TouchableOpacity>
+      {/* Gradient Background */}
+      <LinearGradient
+        colors={['#F8FAFF', '#EEF2FF', '#F5F3FF', '#EEF2FF']}
+        locations={[0, 0.3, 0.6, 1]}
+        style={StyleSheet.absoluteFill}
+      />
 
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Your Cart</Text>
-          <Text style={styles.headerSubtitle}>{subtitle}</Text>
-        </View>
+      {/* Decorative orbs */}
+      <View style={[styles.decorativeOrb, styles.orb1]} />
+      <View style={[styles.decorativeOrb, styles.orb2]} />
 
-        <TouchableOpacity
-          style={styles.scanMoreButton}
-          onPress={() => navigation.navigate('Scanner')}
+      <SafeAreaView style={styles.safeArea}>
+        {/* Glass Header */}
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              opacity: headerAnim,
+              transform: [
+                {
+                  translateY: headerAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
         >
-          <Ionicons name="scan-outline" size={22} color="#4A90A4" />
-        </TouchableOpacity>
-      </View>
+          {Platform.OS !== 'web' && (
+            <BlurView intensity={60} tint="light" style={StyleSheet.absoluteFill} />
+          )}
+          <LinearGradient
+            colors={['rgba(255, 255, 255, 0.9)', 'rgba(255, 255, 255, 0.7)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.headerContent}>
+            <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+              <Ionicons name="chevron-back" size={24} color={glassColors.text.primary} />
+            </TouchableOpacity>
 
-      {/* Cart Items */}
-      {cartItems.length > 0 ? (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Animated.View
-            style={{
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            }}
+            <View style={styles.headerCenter}>
+              <Text style={styles.headerTitle}>Your Cart</Text>
+              <Text style={styles.headerSubtitle}>
+                {itemCount === 0 ? 'Empty' : `${itemCount} item${itemCount === 1 ? '' : 's'}`}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.scanMoreButton}
+              onPress={() => navigation.navigate('Scanner')}
+            >
+              <LinearGradient
+                colors={[liquidGlassColors.accent.primary, liquidGlassColors.accent.secondary]}
+                style={styles.scanMoreGradient}
+              >
+                <Ionicons name="scan" size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+
+        {/* Cart Items */}
+        {cartItems.length > 0 ? (
+          <ScrollView
+            style={styles.scrollView}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
           >
+            {/* Store indicator */}
+            {selectedStore && (
+              <View style={styles.storeIndicator}>
+                <Ionicons name="storefront" size={14} color={glassColors.accent.primary} />
+                <Text style={styles.storeIndicatorText}>Shopping at {selectedStore.name}</Text>
+              </View>
+            )}
+
             {cartItems.map((item, index) => (
               <CartItem
                 key={item.id}
@@ -101,102 +180,180 @@ const CartScreen: React.FC<Props> = ({ navigation }) => {
                 index={index}
               />
             ))}
+
+            {/* Spacer for bottom summary */}
+            <View style={{ height: 220 }} />
+          </ScrollView>
+        ) : (
+          <Animated.View
+            style={[
+              styles.emptyContainer,
+              {
+                opacity: emptyAnim,
+                transform: [{ scale: emptyAnim }],
+              },
+            ]}
+          >
+            <View style={styles.emptyCard}>
+              {Platform.OS !== 'web' && (
+                <BlurView intensity={50} tint="light" style={StyleSheet.absoluteFill} />
+              )}
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.85)', 'rgba(255, 255, 255, 0.6)']}
+                style={StyleSheet.absoluteFill}
+              />
+              <View style={styles.emptyContent}>
+                <View style={styles.emptyIconContainer}>
+                  <LinearGradient
+                    colors={['rgba(99, 102, 241, 0.15)', 'rgba(139, 92, 246, 0.1)']}
+                    style={styles.emptyIconGradient}
+                  >
+                    <Ionicons name="bag-outline" size={56} color={glassColors.accent.primary} />
+                  </LinearGradient>
+                </View>
+                <Text style={styles.emptyTitle}>Your cart is empty</Text>
+                <Text style={styles.emptyDescription}>
+                  Start scanning products to add them to your cart
+                </Text>
+                <TouchableOpacity
+                  style={styles.emptyButton}
+                  onPress={() => navigation.navigate('Scanner')}
+                >
+                  <LinearGradient
+                    colors={[glassColors.accent.primary, glassColors.accent.secondary]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.emptyButtonGradient}
+                  >
+                    <Ionicons name="scan" size={20} color="#FFFFFF" />
+                    <Text style={styles.emptyButtonText}>Start Scanning</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </View>
+            </View>
           </Animated.View>
-        </ScrollView>
-      ) : (
-        <View style={styles.emptyContainer}>
-          <View style={styles.emptyIconContainer}>
-            <Ionicons name="cart-outline" size={64} color="#D1D5DB" />
-          </View>
-          <Text style={styles.emptyTitle}>Your cart is empty</Text>
-          <Text style={styles.emptyDescription}>
-            Start scanning products to add them to your cart
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyButton}
-            onPress={() => navigation.navigate('Scanner')}
-          >
-            <Ionicons name="scan" size={20} color="#FFFFFF" />
-            <Text style={styles.emptyButtonText}>Start Scanning</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+        )}
 
-      {/* Bottom Summary */}
-      {cartItems.length > 0 && (
-        <View style={styles.bottomContainer}>
-          <View style={styles.summaryContainer}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Subtotal</Text>
-              <Text style={styles.summaryValue}>${total.toFixed(2)}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Tax (estimated)</Text>
-              <Text style={styles.summaryValue}>${(total * 0.08).toFixed(2)}</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.summaryRow}>
-              <Text style={styles.totalLabel}>Total</Text>
-              <Text style={styles.totalValue}>${(total * 1.08).toFixed(2)}</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={styles.checkoutButton}
-            onPress={() => navigation.navigate('Payment')}
-            activeOpacity={0.9}
+        {/* Bottom Summary */}
+        {cartItems.length > 0 && (
+          <Animated.View
+            style={[
+              styles.bottomContainer,
+              { transform: [{ translateY: bottomAnim }] },
+            ]}
           >
-            <Text style={styles.checkoutButtonText}>Proceed to Payment</Text>
-            <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-      )}
-    </SafeAreaView>
+            {Platform.OS !== 'web' && (
+              <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+            )}
+            <LinearGradient
+              colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0.9)']}
+              style={StyleSheet.absoluteFill}
+            />
+
+            <View style={styles.summaryContainer}>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Subtotal</Text>
+                <Text style={styles.summaryValue}>${total.toFixed(2)}</Text>
+              </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryLabel}>Tax (8%)</Text>
+                <Text style={styles.summaryValue}>${tax.toFixed(2)}</Text>
+              </View>
+              <View style={styles.divider} />
+              <View style={styles.summaryRow}>
+                <Text style={styles.totalLabel}>Total</Text>
+                <Text style={styles.totalValue}>${grandTotal.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.sliderContainer}>
+              <GlassSlider
+                title="Slide to Checkout"
+                icon="card-outline"
+                onComplete={() => navigation.navigate('Payment')}
+                gradient={[glassColors.accent.primary, glassColors.accent.secondary]}
+              />
+            </View>
+          </Animated.View>
+        )}
+      </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFBFC',
+  },
+  safeArea: {
+    flex: 1,
+  },
+  decorativeOrb: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  orb1: {
+    width: 250,
+    height: 250,
+    backgroundColor: 'rgba(139, 92, 246, 0.08)',
+    top: -50,
+    right: -80,
+  },
+  orb2: {
+    width: 180,
+    height: 180,
+    backgroundColor: 'rgba(99, 102, 241, 0.06)',
+    bottom: 200,
+    left: -60,
   },
   header: {
+    zIndex: 10,
+    overflow: 'hidden',
+  },
+  headerWrapper: {
+    marginHorizontal: 16,
+    marginTop: 8,
+  },
+  headerContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#F5F5F5',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: glassColors.border.medium,
   },
   headerCenter: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 14,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 22,
     ...typography.title,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
   },
   headerSubtitle: {
     fontSize: 13,
     ...typography.caption,
-    color: '#6B7280',
+    color: glassColors.text.secondary,
     marginTop: 2,
   },
   scanMoreButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#F0F7FA',
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    overflow: 'hidden',
+    ...glassShadow.glow,
+  },
+  scanMoreGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -204,44 +361,82 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: 16,
+    paddingTop: 20,
+  },
+  storeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(99, 102, 241, 0.08)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  storeIndicatorText: {
+    fontSize: 13,
+    ...typography.caption,
+    color: glassColors.accent.primary,
+    marginLeft: 6,
   },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
+  },
+  emptyCard: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: radius.xxl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glassColors.border.light,
+    ...glassShadow.soft,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.85)' : 'transparent',
+  },
+  emptyContent: {
+    padding: 32,
+    alignItems: 'center',
   },
   emptyIconContainer: {
     width: 120,
     height: 120,
-    borderRadius: 60,
-    backgroundColor: '#F5F5F5',
+    borderRadius: 36,
+    overflow: 'hidden',
+    marginBottom: 24,
+  },
+  emptyIconGradient: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
   },
   emptyTitle: {
     fontSize: 22,
     ...typography.title,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
     marginBottom: 8,
   },
   emptyDescription: {
     fontSize: 15,
     ...typography.body,
-    color: '#6B7280',
+    color: glassColors.text.secondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: 28,
     lineHeight: 22,
   },
   emptyButton: {
+    width: '100%',
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    ...glassShadow.glow,
+  },
+  emptyButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#4A90A4',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 12,
+    justifyContent: 'center',
+    paddingVertical: 16,
   },
   emptyButtonText: {
     color: '#FFFFFF',
@@ -250,69 +445,57 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   bottomContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 32,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 10,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: radius.xxl,
+    borderTopRightRadius: radius.xxl,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: glassColors.border.light,
+    borderBottomWidth: 0,
+    ...glassShadow.medium,
+    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.95)' : 'transparent',
   },
   summaryContainer: {
-    marginBottom: 20,
+    padding: 20,
+    paddingBottom: 16,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   summaryLabel: {
     fontSize: 15,
     ...typography.body,
-    color: '#6B7280',
+    color: glassColors.text.secondary,
   },
   summaryValue: {
     fontSize: 15,
     ...typography.body,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
   },
   divider: {
     height: 1,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: glassColors.border.medium,
     marginVertical: 12,
   },
   totalLabel: {
     fontSize: 17,
     ...typography.title,
-    color: '#1A1A2E',
+    color: glassColors.text.primary,
   },
   totalValue: {
-    fontSize: 22,
+    fontSize: 24,
     ...typography.title,
-    color: '#1A1A2E',
+    color: glassColors.accent.primary,
   },
-  checkoutButton: {
-    flexDirection: 'row',
+  sliderContainer: {
+    marginHorizontal: 20,
+    marginBottom: 32,
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#1A1A2E',
-    paddingVertical: 18,
-    borderRadius: 16,
-    shadowColor: '#1A1A2E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  checkoutButtonText: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    ...typography.button,
-    marginRight: 8,
   },
 });
 

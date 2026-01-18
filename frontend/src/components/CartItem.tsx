@@ -81,9 +81,15 @@ const CartItem: React.FC<CartItemProps> = ({
     >
       <View style={styles.itemInfo}>
         <View style={styles.iconContainer}>
-          {item.image && productImages[item.image] ? (
-            <Image 
-              source={productImages[item.image]} 
+          {(item.image && (item.image.startsWith('http') || item.image.startsWith('https'))) ? (
+            <Image
+              source={{ uri: item.image }}
+              style={styles.productImage}
+              resizeMode="contain"
+            />
+          ) : (item.image && productImages[item.image]) ? (
+            <Image
+              source={productImages[item.image]}
               style={styles.productImage}
               resizeMode="contain"
             />

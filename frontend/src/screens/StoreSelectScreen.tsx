@@ -46,7 +46,7 @@ const fetchStores = async (): Promise<Store[]> => {
     return data.map((store: any) => ({
       id: store._id || store.id,
       name: store.name,
-      logo: store.logo || store.image_url || 'https://via.placeholder.com/150', // Fallback for logo
+      logo: store.logo_url || store.logo || store.image_url || 'https://via.placeholder.com/150', // Fallback for logo
     }));
   } catch (error) {
     console.error('Error fetching stores:', error);

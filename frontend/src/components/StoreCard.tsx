@@ -78,7 +78,8 @@ const StoreCard: React.FC<StoreCardProps> = ({ id, name, logo, onPress, index })
   };
 
   // Get logo source for store
-  const logoSource = storeLogos[id];
+  const isUrl = logo?.startsWith('http') || logo?.startsWith('https');
+  const logoSource = isUrl ? { uri: logo } : storeLogos[id];
   const fallbackColor = fallbackColors[id] || '#4A90A4';
 
   // Get initials for stores without real logos (fallback)

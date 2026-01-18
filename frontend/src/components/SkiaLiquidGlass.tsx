@@ -7,10 +7,16 @@ import {
   Fill,
   rect,
   rrect,
-  ImageFilter,
   TileMode,
+  Group,
+  RoundedRect,
+  Blur,
+  ColorMatrix,
+  Paint,
+  LinearGradient,
+  vec,
+  ImageFilter,
 } from "@shopify/react-native-skia";
-import { useDerivedValue } from "react-native-reanimated";
 import { squircle } from "../theme/glass";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -39,6 +45,7 @@ float sdf(float2 p) {
   return sdRoundedBox(p - center, halfSize, radius);
 }
 
+// Gradient calculation for normal map
 float2 calculateGradient(float2 p) {
   float eps = 1.0;
   float dx = sdf(p + float2(eps, 0.0)) - sdf(p - float2(eps, 0.0));
@@ -88,16 +95,16 @@ half4 main(float2 fragCoord) {
   // Sample blurred background with chromatic offset
   vec2 chromaOffset = refractVec.xy * chromaticAberration; // Normalized UV offset
   
-  // NOTE: blurredImage.eval coords depend on how it's passed. 
-  // Skia shaders usually take coords in pixels. 
-  // Resolution is passed to normalize if needed, but eval takes pixel coords.
+  // Sample background using blurredImage input
+  // Note: Skia shader coords are in pixels.
+  
   float r = blurredImage.eval(fragCoord + baseOffset - chromaOffset * resolution.xy).r;
   float gChannel = blurredImage.eval(fragCoord + baseOffset).g;
   float b = blurredImage.eval(fragCoord + baseOffset + chromaOffset * resolution.xy).b;
   
   vec4 refractColor = vec4(r, gChannel, b, 1.0);
   
-  // Reflection/Specularity (simplified)
+  // Reflection/Specularity
   float3 lightDir = normalize(float3(-0.5, -0.8, 1.0));
   float3 reflectVec = reflect(-lightDir, normal);
   float specular = pow(max(0.0, dot(reflectVec, -incident)), 32.0);
@@ -105,9 +112,7 @@ half4 main(float2 fragCoord) {
   // Edge Glow/Highlight
   float edgeGlow = smoothstep(-8.0, 0.0, d) * (1.0 - smoothstep(-2.0, 0.0, d));
   
-  // Mix refraction and reflection
-  // Adjust transmission/opacity based on design needs
-  float transmission = 0.9;
+  // Composition
   vec4 glassColor = refractColor;
   
   // Add Specular Highlights
@@ -131,12 +136,12 @@ export interface SkiaLiquidGlassProps {
   height?: number;
   borderRadius?: number;
   blurIntensity?: number;
-  tintOpacity?: number; // Kept for compatibility, though shader handles tint
+  tintOpacity?: number;
   glassThickness?: number;
   indexOfRefraction?: number;
-  saturation?: number; // Not used in this shader version, but kept for interface
-  highlightIntensity?: number; // Not used directly, baked into shader spec
-  enableShimmer?: boolean; // Not used in this shader version
+  saturation?: number;
+  highlightIntensity?: number;
+  enableShimmer?: boolean;
   animated?: boolean;
   style?: any;
   isDarkMode?: boolean;
@@ -170,12 +175,6 @@ const SkiaLiquidGlass: React.FC<SkiaLiquidGlassProps> = ({
     return () => cancelAnimationFrame(frameId);
   }, [animated]);
 
-  // Use useDerivedValue or similar if integrating with Reanimated, 
-  // but here we construct the filter directly for the Canvas.
-
-  // Logic to build the RuntimeShader with Children
-  // We need to create the filter *inside* the render or via a memo that returns the SkImageFilter
-
   const backdropFilter = useMemo(() => {
     if (!liquidRuntimeEffect) return null;
 
@@ -184,22 +183,21 @@ const SkiaLiquidGlass: React.FC<SkiaLiquidGlassProps> = ({
     // Set Uniforms
     builder.setUniform("resolution", [containerWidth, containerHeight]);
     builder.setUniform("bounds", [0, 0, containerWidth, containerHeight]); // x, y, w, h locally
-    builder.setUniform("radius", borderRadius);
-    builder.setUniform("thickness", glassThickness);
-    builder.setUniform("ior", indexOfRefraction);
-    builder.setUniform("time", time);
+    builder.setUniform("radius", [borderRadius]);
+    builder.setUniform("thickness", [glassThickness]);
+    builder.setUniform("ior", [indexOfRefraction]);
+    builder.setUniform("time", [time]);
 
     // Create the filter chain: Blur -> Custom Shader
     // using "blurredImage" as the uniform name for the input child
     return Skia.ImageFilter.MakeRuntimeShaderWithChildren(
       builder,
-      0, // null means sample coordinates are not mapped?? or just passthrough
-      ["blurredImage"], // The uniform name in the shader
+      0,
+      ["blurredImage"],
       [Skia.ImageFilter.MakeBlur(blurIntensity, blurIntensity, TileMode.Clamp)]
     );
   }, [containerWidth, containerHeight, borderRadius, glassThickness, indexOfRefraction, time, blurIntensity]);
 
-  // Clip path for the container to match shape
   const clipPath = useMemo(() => {
     const path = Skia.Path.Make();
     path.addRRect(rrect(rect(0, 0, containerWidth, containerHeight), borderRadius, borderRadius));
@@ -208,105 +206,133 @@ const SkiaLiquidGlass: React.FC<SkiaLiquidGlassProps> = ({
 
   return (
     <View style={[styles.container, { width: containerWidth, height: containerHeight, borderRadius: borderRadius }, style]}>
-      {/* Canvas for the Backdrop Filter */}
       <Canvas style={StyleSheet.absoluteFill}>
-        {/* We apply the filter to the Fill, which covers the canvas area 
-              BackdropFilter applies to what is BEHIND the primitive.
-          */}
-        <Fill>
-          <BackdropFilter
-            tintOpacity= 0.25,
-          style,
-          isDarkMode = false,
+        <Group clip={clipPath}>
+          {backdropFilter && (
+            <BackdropFilter
+              filter={<ImageFilter filter={backdropFilter} />}
+            >
+              <Fill color="transparent" />
+            </BackdropFilter>
+          )}
+        </Group>
+      </Canvas>
+
+      <View style={styles.contentContainer} pointerEvents="box-none">
+        {children}
+      </View>
+    </View>
+  );
+};
+
+// Restoring SkiaGlassCard for compatibility/fallback usage
+export const SkiaGlassCard: React.FC<{
+  children?: React.ReactNode;
+  width?: number;
+  height?: number;
+  borderRadius?: number;
+  blur?: number;
+  tintOpacity?: number;
+  style?: any;
+  isDarkMode?: boolean;
+}> = ({
+  children,
+  width: propWidth,
+  height = 120,
+  borderRadius = squircle.lg,
+  blur = 20,
+  tintOpacity = 0.25,
+  style,
+  isDarkMode = false,
 }) => {
     const cardWidth = propWidth || SCREEN_WIDTH - 48;
 
-          const glassColor = isDarkMode
-          ? `rgba(255, 255, 255, ${tintOpacity * 0.4})`
-          : `rgba(255, 255, 255, ${tintOpacity})`;
+    const glassColor = isDarkMode
+      ? `rgba(255, 255, 255, ${tintOpacity * 0.4})`
+      : `rgba(255, 255, 255, ${tintOpacity})`;
 
-          const borderColor = isDarkMode
-          ? 'rgba(255, 255, 255, 0.2)'
-          : 'rgba(255, 255, 255, 0.6)';
+    const borderColor = isDarkMode
+      ? 'rgba(255, 255, 255, 0.2)'
+      : 'rgba(255, 255, 255, 0.6)';
 
     const clipPath = useMemo(() => {
       const path = Skia.Path.Make();
-          path.addRRect(rrect(rect(0, 0, cardWidth, height), borderRadius, borderRadius));
-          return path;
+      path.addRRect(rrect(rect(0, 0, cardWidth, height), borderRadius, borderRadius));
+      return path;
     }, [cardWidth, height, borderRadius]);
 
-          return (
-          <View style={[styles.container, { width: cardWidth, height, borderRadius }, style]}>
-            <Canvas style={styles.canvas}>
-              <Group clip={clipPath}>
-                <BackdropFilter filter={<Blur blur={blur} />}>
-                  <RoundedRect
-                    x={0}
-                    y={0}
-                    width={cardWidth}
-                    height={height}
-                    r={borderRadius}
-                  />
-                </BackdropFilter>
-                <RoundedRect
-                  x={0}
-                  y={0}
-                  width={cardWidth}
-                  height={height}
-                  r={borderRadius}
-                  color={glassColor}
-                />
-                <RoundedRect
-                  x={0}
-                  y={0}
-                  width={cardWidth}
-                  height={height * 0.45}
-                  r={borderRadius}
-                >
-                  <LinearGradient
-                    start={vec(0, 0)}
-                    end={vec(0, height * 0.45)}
-                    colors={[
-                      isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.4)',
-                      'rgba(255, 255, 255, 0)',
-                    ]}
-                  />
-                </RoundedRect>
+    return (
+      <View style={[styles.container, { width: cardWidth, height, borderRadius }, style]}>
+        <Canvas style={styles.canvas}>
+          <Group clip={clipPath}>
+            <BackdropFilter filter={<Blur blur={blur} />}>
+              <RoundedRect
+                x={0}
+                y={0}
+                width={cardWidth}
+                height={height}
+                r={borderRadius}
+              />
+            </BackdropFilter>
+            <RoundedRect
+              x={0}
+              y={0}
+              width={cardWidth}
+              height={height}
+              r={borderRadius}
+              color={glassColor}
+            />
+            <RoundedRect
+              x={0}
+              y={0}
+              width={cardWidth}
+              height={height * 0.45}
+              r={borderRadius}
+            >
+              <LinearGradient
+                start={vec(0, 0)}
+                end={vec(0, height * 0.45)}
+                colors={[
+                  isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.4)',
+                  'rgba(255, 255, 255, 0)',
+                ]}
+              />
+            </RoundedRect>
 
-                <RoundedRect
-                  x={0.5}
-                  y={0.5}
-                  width={cardWidth - 1}
-                  height={height - 1}
-                  r={borderRadius - 0.5}
-                  color="transparent"
-                  style="stroke"
-                  strokeWidth={1.5}
-                >
-                  <Paint color={borderColor} />
-                </RoundedRect>
-              </Group>
-            </Canvas>
+            <RoundedRect
+              x={0.5}
+              y={0.5}
+              width={cardWidth - 1}
+              height={height - 1}
+              r={borderRadius - 0.5}
+              color="transparent"
+              style="stroke"
+              strokeWidth={1.5}
+            >
+              <Paint color={borderColor} />
+            </RoundedRect>
+          </Group>
+        </Canvas>
 
-            <View style={styles.contentContainer} pointerEvents="box-none">
-              {children}
-            </View>
-          </View>
-          );
+        <View style={styles.contentContainer} pointerEvents="box-none">
+          {children}
+        </View>
+      </View>
+    );
   };
 
-          const styles = StyleSheet.create({
-            container: {
-            overflow: 'hidden',
+const styles = StyleSheet.create({
+  container: {
+    overflow: "hidden",
   },
-          canvas: {
-            ...StyleSheet.absoluteFillObject,
+  canvas: {
+    ...StyleSheet.absoluteFillObject,
   },
-          contentContainer: {
-            ...StyleSheet.absoluteFillObject,
-            justifyContent: 'center',
-          alignItems: 'center',
+  contentContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: "center",
+    alignItems: "center",
   },
 });
 
-          export default SkiaLiquidGlass;
+export default SkiaLiquidGlass;

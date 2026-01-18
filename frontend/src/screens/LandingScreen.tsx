@@ -29,6 +29,7 @@ import MergingGlassStack from '../components/MergingGlassStack';
 import VibrantTimestamp from '../components/VibrantTimestamp';
 import LiquidGlassContainer from '../components/LiquidGlassContainer';
 import SkiaLiquidGlass from '../components/SkiaLiquidGlass';
+import LiquidBackground from '../components/LiquidBackground';
 
 const { width, height } = Dimensions.get('window');
 
@@ -47,112 +48,12 @@ interface Props {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ANIMATED LIQUID ORB
-// Floating background orbs with liquid motion
-// ═══════════════════════════════════════════════════════════════════════════════
-const LiquidOrb: React.FC<{
-  color: string;
-  size: number;
-  initialX: number;
-  initialY: number;
-  delay: number;
-  blur?: boolean;
-}> = ({ color, size, initialX, initialY, delay, blur = true }) => {
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(0)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    // Entrance animation with liquid spring
-    Animated.spring(scale, {
-      toValue: 1,
-      ...liquidSpring.gentle,
-      delay,
-      useNativeDriver: true,
-    }).start();
-
-    // Organic floating motion
-    const floatX = Animated.loop(
-      Animated.sequence([
-        Animated.timing(translateX, {
-          toValue: 35,
-          duration: 5000 + Math.random() * 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateX, {
-          toValue: -35,
-          duration: 5000 + Math.random() * 2000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    const floatY = Animated.loop(
-      Animated.sequence([
-        Animated.timing(translateY, {
-          toValue: 30,
-          duration: 4500 + Math.random() * 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(translateY, {
-          toValue: -30,
-          duration: 4500 + Math.random() * 2000,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-
-    // Slow rotation for organic feel
-    const rotate = Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 20000,
-        useNativeDriver: true,
-      })
-    );
-
-    floatX.start();
-    floatY.start();
-    rotate.start();
-  }, []);
-
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  return (
-    <Animated.View
-      style={[
-        styles.orb,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: color,
-          left: initialX,
-          top: initialY,
-          transform: [
-            { translateX },
-            { translateY },
-            { scale },
-            { rotate: rotation },
-          ],
-        },
-        blur && styles.orbBlur,
-      ]}
-    />
-  );
-};
-
-// ═══════════════════════════════════════════════════════════════════════════════
 // LANDING SCREEN
 // iOS 26 Liquid Glass Design Implementation
 // ═══════════════════════════════════════════════════════════════════════════════
 const LandingScreen: React.FC<Props> = ({ navigation }) => {
   const [isDarkMode] = useState(false); // Can be connected to system theme
-  
+
   // Animation values
   const logoScale = useRef(new Animated.Value(0)).current;
   const logoRotate = useRef(new Animated.Value(0)).current;
@@ -354,46 +255,14 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      
-      {/* Gradient Background */}
-      <LinearGradient
-        colors={isDarkMode 
-          ? ['#0F0F1A', '#1A1A2E', '#16162A', '#0F0F1A']
-          : ['#F8FAFF', '#EEF2FF', '#E0E7FF', '#EEF2FF']
-        }
-        locations={[0, 0.3, 0.7, 1]}
-        style={StyleSheet.absoluteFill}
-      />
 
-      {/* Liquid Floating Orbs */}
-      <LiquidOrb 
-        color={isDarkMode ? 'rgba(99, 102, 241, 0.2)' : 'rgba(99, 102, 241, 0.15)'} 
-        size={220} 
-        initialX={-60} 
-        initialY={80} 
-        delay={0} 
-      />
-      <LiquidOrb 
-        color={isDarkMode ? 'rgba(139, 92, 246, 0.18)' : 'rgba(139, 92, 246, 0.12)'} 
-        size={180} 
-        initialX={width - 120} 
-        initialY={180} 
-        delay={200} 
-      />
-      <LiquidOrb 
-        color={isDarkMode ? 'rgba(236, 72, 153, 0.15)' : 'rgba(236, 72, 153, 0.1)'} 
-        size={150} 
-        initialX={width / 2 - 75} 
-        initialY={height - 320} 
-        delay={400} 
-      />
-      <LiquidOrb 
-        color={isDarkMode ? 'rgba(6, 182, 212, 0.18)' : 'rgba(6, 182, 212, 0.12)'} 
-        size={130} 
-        initialX={20} 
-        initialY={height - 420} 
-        delay={300} 
-      />
+      {/* Interactive Liquid Background */}
+      <View style={StyleSheet.absoluteFill}>
+        <LiquidBackground />
+
+        {/* Subtle overlay to ensure text readability if needed */}
+        <BlurView intensity={10} tint="dark" style={StyleSheet.absoluteFill} />
+      </View>
 
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
@@ -439,7 +308,7 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
           >
             <Text style={[
               styles.title,
-              { color: getVibrantText(isDarkMode, 'primary') }
+              { color: '#FFFFFF' }
             ]}>
               QLess
             </Text>
@@ -449,122 +318,12 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
           <Animated.View style={{ opacity: subtitleFade }}>
             <Text style={[
               styles.subtitle,
-              { color: getVibrantText(isDarkMode, 'secondary') }
+              { color: '#FFFFFF' }
             ]}>
               Skip the line. Shop smarter.
             </Text>
           </Animated.View>
 
-          {/* Skia Liquid Glass Stack - Physics-based overlapping cards */}
-          <Animated.View 
-            style={[
-              styles.stackContainer,
-              { opacity: stackFade }
-            ]}
-          >
-            {/* Features Card - Top layer with full physics rendering */}
-            <SkiaLiquidGlass
-              height={115}
-              borderRadius={squircle.xxl}
-              blurIntensity={20}
-              tintOpacity={isDarkMode ? 0.15 : 0.3}
-              glassThickness={25}
-              indexOfRefraction={1.5}
-              saturation={1.4}
-              highlightIntensity={0.8}
-              enableShimmer={true}
-              isDarkMode={isDarkMode}
-              style={[styles.glassCard, { zIndex: 3, elevation: 8 }]}
-            >
-              <View style={styles.featuresContent}>
-                <View style={styles.featureItem}>
-                  <View style={[styles.featureIcon, { backgroundColor: 'rgba(99, 102, 241, 0.25)' }]}>
-                    <Ionicons name="scan" size={24} color={liquidGlassColors.accent.primary} />
-                  </View>
-                  <Text style={[styles.featureText, isDarkMode && { color: 'rgba(255,255,255,0.9)' }]}>Scan</Text>
-                </View>
-                <View style={styles.featureDivider} />
-                <View style={styles.featureItem}>
-                  <View style={[styles.featureIcon, { backgroundColor: 'rgba(139, 92, 246, 0.25)' }]}>
-                    <Ionicons name="cart" size={24} color={liquidGlassColors.accent.secondary} />
-                  </View>
-                  <Text style={[styles.featureText, isDarkMode && { color: 'rgba(255,255,255,0.9)' }]}>Cart</Text>
-                </View>
-                <View style={styles.featureDivider} />
-                <View style={styles.featureItem}>
-                  <View style={[styles.featureIcon, { backgroundColor: 'rgba(236, 72, 153, 0.25)' }]}>
-                    <Ionicons name="card" size={24} color={liquidGlassColors.accent.tertiary} />
-                  </View>
-                  <Text style={[styles.featureText, isDarkMode && { color: 'rgba(255,255,255,0.9)' }]}>Pay</Text>
-                </View>
-                <View style={styles.featureDivider} />
-                <View style={styles.featureItem}>
-                  <View style={[styles.featureIcon, { backgroundColor: 'rgba(16, 185, 129, 0.25)' }]}>
-                    <Ionicons name="exit" size={24} color={liquidGlassColors.accent.emerald} />
-                  </View>
-                  <Text style={[styles.featureText, isDarkMode && { color: 'rgba(255,255,255,0.9)' }]}>Go</Text>
-                </View>
-              </View>
-            </SkiaLiquidGlass>
-
-            {/* Stats Card - Middle layer with refraction */}
-            <SkiaLiquidGlass
-              height={90}
-              borderRadius={squircle.xxl}
-              blurIntensity={18}
-              tintOpacity={isDarkMode ? 0.12 : 0.25}
-              glassThickness={20}
-              indexOfRefraction={1.45}
-              saturation={1.3}
-              highlightIntensity={0.7}
-              enableShimmer={true}
-              isDarkMode={isDarkMode}
-              style={[styles.glassCard, { marginTop: -24, zIndex: 2, elevation: 6 }]}
-            >
-              <View style={styles.statsContent}>
-                <View style={styles.statItem}>
-                  <Text style={[styles.statValue, isDarkMode && { color: '#A78BFA' }]}>50+</Text>
-                  <Text style={[styles.statLabel, isDarkMode && { color: 'rgba(255,255,255,0.7)' }]}>Stores</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statItem}>
-                  <Text style={[styles.statValue, isDarkMode && { color: '#A78BFA' }]}>2M+</Text>
-                  <Text style={[styles.statLabel, isDarkMode && { color: 'rgba(255,255,255,0.7)' }]}>Scans</Text>
-                </View>
-                <View style={styles.statDivider} />
-                <View style={styles.statItem}>
-                  <Text style={[styles.statValue, isDarkMode && { color: '#A78BFA' }]}>4.9</Text>
-                  <Text style={[styles.statLabel, isDarkMode && { color: 'rgba(255,255,255,0.7)' }]}>Rating</Text>
-                </View>
-              </View>
-            </SkiaLiquidGlass>
-
-            {/* Timestamp Card - Bottom layer */}
-            <SkiaLiquidGlass
-              height={80}
-              borderRadius={squircle.xxl}
-              blurIntensity={15}
-              tintOpacity={isDarkMode ? 0.1 : 0.22}
-              glassThickness={18}
-              indexOfRefraction={1.4}
-              saturation={1.25}
-              highlightIntensity={0.6}
-              enableShimmer={true}
-              isDarkMode={isDarkMode}
-              style={[styles.glassCard, { marginTop: -22, zIndex: 1, elevation: 4 }]}
-            >
-              <View style={styles.timestampContainer}>
-                <VibrantTimestamp
-                  format="12h"
-                  showDate={true}
-                  variant="widget"
-                  useGradient={true}
-                  isDarkMode={isDarkMode}
-                  animated={true}
-                />
-              </View>
-            </SkiaLiquidGlass>
-          </Animated.View>
         </View>
 
         {/* Bottom CTA Section */}
@@ -578,21 +337,22 @@ const LandingScreen: React.FC<Props> = ({ navigation }) => {
           ]}
         >
           <GlassSlider
-            title="Slide to Start Shopping"
-            icon="bag-outline"
+            title="Slide to Start Shopping!"
+            icon="lock-closed-outline"
+            endIcon="lock-open-outline"
             onComplete={() => navigation.navigate('Login')}
             gradient={[liquidGlassColors.accent.primary, liquidGlassColors.accent.secondary]}
           />
-          
+
           <TouchableOpacity
             style={styles.adminButton}
             onPress={() => navigation.navigate('AdminLogin')}
             activeOpacity={0.7}
           >
-            <Ionicons 
-              name="settings-outline" 
-              size={18} 
-              color={getVibrantText(isDarkMode, 'secondary')} 
+            <Ionicons
+              name="settings-outline"
+              size={18}
+              color={getVibrantText(isDarkMode, 'secondary')}
             />
             <Text style={[
               styles.adminButtonText,
@@ -703,12 +463,12 @@ const styles = StyleSheet.create({
   featureText: {
     fontSize: 13,
     ...typography.caption,
-    color: liquidGlassColors.vibrant.light.secondary,
+    color: '#ffffff',
   },
   featureDivider: {
     width: 1,
     height: 40,
-    backgroundColor: liquidGlassColors.specular.edgeMedium,
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
   // Stats card content
   statsContent: {
@@ -723,13 +483,13 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     ...typography.title,
-    color: liquidGlassColors.accent.primary,
+    color: '#ffffff',
     marginBottom: 2,
   },
   statLabel: {
     fontSize: 12,
     ...typography.caption,
-    color: liquidGlassColors.vibrant.light.tertiary,
+    color: 'rgba(255,255,255,0.7)',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },

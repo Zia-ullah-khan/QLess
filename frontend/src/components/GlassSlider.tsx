@@ -1,278 +1,321 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useMemo, useState, useEffect } from "react";
 import {
   View,
-  Text,
   StyleSheet,
-  Animated,
   PanResponder,
   Dimensions,
   Platform,
-} from 'react-native';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { typography } from '../theme/typography';
+} from "react-native";
 import {
-  liquidGlassColors,
-  liquidShadow,
-  squircle,
-  glassColors,
-  radius,
-} from '../theme/glass';
+  Canvas,
+  Skia,
+  Shader,
+  Fill,
+  Text,
+  matchFont,
+  Group,
+  RoundedRect,
+  LinearGradient,
+  vec,
+  Circle,
+  Box,
+  rrect,
+  BoxShadow,
+  Blur,
+  useFont,
+  Paint,
+  ImageFilter,
+} from "@shopify/react-native-skia";
+import Animated, {
+  useSharedValue,
+  useDerivedValue,
+  withSpring,
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+} from "react-native-reanimated";
+import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { glassColors } from "../theme/glass";
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-interface GlassSliderProps {
-  onComplete: () => void;
-  title: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-  gradient?: string[];
-  disabled?: boolean;
-  width?: number;
-}
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const SLIDER_HEIGHT = 72;
 const THUMB_SIZE = 58;
 const PADDING = 7;
 
+interface GlassSliderProps {
+  onComplete: () => void;
+  title: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  endIcon?: keyof typeof Ionicons.glyphMap;
+  gradient?: string[];
+  disabled?: boolean;
+  width?: number;
+}
+
+// Shader for text distortion (lens/repel effect)
+const distortionShaderSource = Skia.RuntimeEffect.Make(`
+uniform shader image;
+uniform float2 thumbPos;
+uniform float radius;
+uniform float strength;
+
+half4 main(float2 xy) {
+  float d = distance(xy, thumbPos);
+  
+  // Calculate displacement
+  // Push pixels AWAY from thumb significantly to create a "hole" or "lens" effect
+  // strength * (1.0 - smoothstep(0, radius, d))
+  // smoothstep(radius, 0, d) gives 1 at center, 0 at radius
+  
+  float influence = smoothstep(radius, 0.0, d);
+  float2 dir = normalize(xy - thumbPos);
+  
+  // Inverse direction mapping (pulling from outside towards inside? no, we want to push away)
+  // To render pixel at XY, we need to know where it CAME from.
+  // If we want the image to look pushed away, the pixel at XY should sample from closer to the center.
+  
+  float2 offset = dir * influence * strength * -1.0; 
+  
+  return image.eval(xy + offset);
+}
+`)!;
+
 const GlassSlider: React.FC<GlassSliderProps> = ({
   onComplete,
   title,
-  icon = 'arrow-forward',
+  icon = "arrow-forward",
+  endIcon,
   gradient = [glassColors.accent.primary, glassColors.accent.secondary],
   disabled = false,
   width = SCREEN_WIDTH - 48,
 }) => {
   const [completed, setCompleted] = useState(false);
-  const translateX = useRef(new Animated.Value(0)).current;
-  const thumbScale = useRef(new Animated.Value(1)).current;
-  const shimmerAnim = useRef(new Animated.Value(0)).current;
-  const successScale = useRef(new Animated.Value(0)).current;
-  const textOpacity = useRef(new Animated.Value(1)).current;
+  const [thumbPos, setThumbPos] = useState(0);
+
+  // Animation values
+  const translateX = useSharedValue(0);
+  const thumbScale = useSharedValue(1);
+  const isDragging = useSharedValue(0);
 
   const MAX_SLIDE = width - THUMB_SIZE - PADDING * 2;
 
-  // Shimmer animation
-  React.useEffect(() => {
-    const shimmer = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmerAnim, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmerAnim, {
-          toValue: 0,
-          duration: 0,
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    shimmer.start();
-    return () => shimmer.stop();
-  }, []);
+  // Font loading
+  const font = matchFont({
+    fontFamily: Platform.OS === "ios" ? "System" : "Roboto",
+    fontSize: 17,
+    fontWeight: "600",
+  });
 
-  const handleComplete = () => {
-    if (completed || disabled) return;
-    
-    setCompleted(true);
-    
-    // Haptic feedback
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  // Completion handler
+  const handleCompleteJS = () => {
+    if (!completed && !disabled) {
+      setCompleted(true);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      onComplete();
     }
-
-    // Success animation
-    Animated.parallel([
-      Animated.spring(successScale, {
-        toValue: 1,
-        friction: 4,
-        tension: 50,
-        useNativeDriver: true,
-      }),
-      Animated.timing(thumbScale, {
-        toValue: 1.1,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setTimeout(() => {
-        onComplete();
-      }, 300);
-    });
   };
+
+  // Sync SharedValue to React State for Skia Shader
+  useAnimatedReaction(
+    () => translateX.value,
+    (currentValue) => {
+      runOnJS(setThumbPos)(currentValue);
+      if (currentValue >= MAX_SLIDE && !completed) {
+        runOnJS(handleCompleteJS)();
+      }
+    }
+  );
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => !completed && !disabled,
       onMoveShouldSetPanResponder: () => !completed && !disabled,
-      
       onPanResponderGrant: () => {
-        if (Platform.OS !== 'web') {
+        isDragging.value = 1;
+        thumbScale.value = withSpring(0.9);
+        if (Platform.OS !== "web") {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         }
-        Animated.spring(thumbScale, {
-          toValue: 0.95,
-          friction: 5,
-          useNativeDriver: true,
-        }).start();
       },
-      
       onPanResponderMove: (_, gestureState) => {
         const newValue = Math.max(0, Math.min(gestureState.dx, MAX_SLIDE));
-        translateX.setValue(newValue);
-        
-        // Fade text as slider moves
-        const progress = newValue / MAX_SLIDE;
-        textOpacity.setValue(1 - progress * 1.5);
-        
-        // Haptic feedback at certain points
-        if (Platform.OS !== 'web') {
-          if (progress > 0.5 && progress < 0.52) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }
-          if (progress > 0.9 && progress < 0.92) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }
-        }
+        translateX.value = newValue;
       },
-      
       onPanResponderRelease: (_, gestureState) => {
+        isDragging.value = 0;
+        thumbScale.value = withSpring(1);
         const progress = gestureState.dx / MAX_SLIDE;
-        
-        Animated.spring(thumbScale, {
-          toValue: 1,
-          friction: 5,
-          useNativeDriver: true,
-        }).start();
-        
+
         if (progress > 0.85) {
-          // Complete the slide
-          Animated.spring(translateX, {
-            toValue: MAX_SLIDE,
-            friction: 6,
-            useNativeDriver: true,
-          }).start(handleComplete);
+          translateX.value = withSpring(MAX_SLIDE, { damping: 20 });
         } else {
-          // Reset position
-          Animated.parallel([
-            Animated.spring(translateX, {
-              toValue: 0,
-              friction: 6,
-              useNativeDriver: true,
-            }),
-            Animated.timing(textOpacity, {
-              toValue: 1,
-              duration: 200,
-              useNativeDriver: true,
-            }),
-          ]).start();
+          translateX.value = withSpring(0, { damping: 20 });
         }
       },
     })
   ).current;
 
-  const shimmerTranslate = shimmerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-100, width + 100],
+  // Create Filter Object imperatively
+  const textFilter = useMemo(() => {
+    if (!distortionShaderSource) return undefined;
+    const builder = Skia.RuntimeShaderBuilder(distortionShaderSource);
+    builder.setUniform("thumbPos", [thumbPos + THUMB_SIZE / 2 + PADDING, SLIDER_HEIGHT / 2]);
+    builder.setUniform("radius", [80]);
+    builder.setUniform("strength", [30]);
+
+    return Skia.ImageFilter.MakeRuntimeShader(builder, "image", null);
+  }, [thumbPos]);
+
+  // Derived Values become Animated Styles
+  const thumbAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        { translateX: translateX.value },
+        { scale: thumbScale.value }
+      ]
+    };
   });
 
+  const startIconStyle = useAnimatedStyle(() => {
+    const progress = MAX_SLIDE > 0 ? translateX.value / MAX_SLIDE : 0;
+    // Start fading out immediately, fully gone by 20%
+    return {
+      opacity: 1 - Math.min(1, Math.max(0, progress * 5.0))
+    };
+  });
+
+  const endIconStyle = useAnimatedStyle(() => {
+    const progress = MAX_SLIDE > 0 ? translateX.value / MAX_SLIDE : 0;
+    // Start fading in immediately, fully visible by 20%
+    return {
+      opacity: Math.min(1, Math.max(0, progress * 5.0))
+    };
+  });
+
+  // Calculate text position to center it
+  const textX = useMemo(() => {
+    if (!font) return 0;
+    const textWidth = font.getTextWidth(title);
+    return (width - textWidth) / 2 + 10;
+  }, [font, title, width]);
+
+  const textY = SLIDER_HEIGHT / 2 + 6;
+
+  if (!font) {
+    return <View style={{ height: SLIDER_HEIGHT }} />;
+  }
+
   return (
-    <View style={[styles.container, { width }]}>
-      {/* Glass track background */}
-      {Platform.OS !== 'web' && (
-        <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
-      )}
-      <LinearGradient
-        colors={['rgba(255, 255, 255, 0.7)', 'rgba(255, 255, 255, 0.5)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      
-      {/* Inner shadow/border effect */}
-      <View style={styles.innerBorder} />
-      
-      {/* Top highlight */}
-      <View style={styles.topHighlight} />
+    <View style={[styles.container, { width, height: SLIDER_HEIGHT }]}>
+      {/* Skia Canvas Layer - Background & Text */}
+      <Canvas style={StyleSheet.absoluteFill}>
+        {/* 1. Liquid Glass Track Background */}
+        <RoundedRect
+          x={0}
+          y={0}
+          width={width}
+          height={SLIDER_HEIGHT}
+          r={SLIDER_HEIGHT / 2}
+        >
+          <LinearGradient
+            start={vec(0, 0)}
+            end={vec(0, SLIDER_HEIGHT)}
+            colors={["rgba(255,255,255,0.4)", "rgba(255,255,255,0.1)"]}
+          />
+          <Blur blur={10} />
+        </RoundedRect>
 
-      {/* Shimmer effect */}
-      <Animated.View
-        style={[
-          styles.shimmer,
-          {
-            transform: [{ translateX: shimmerTranslate }],
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={['transparent', 'rgba(255, 255, 255, 0.4)', 'transparent']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={styles.shimmerGradient}
+        {/* Track Stroke */}
+        <RoundedRect
+          x={1}
+          y={1}
+          width={width - 2}
+          height={SLIDER_HEIGHT - 2}
+          r={SLIDER_HEIGHT / 2}
+          style="stroke"
+          strokeWidth={1}
+          color="rgba(255,255,255,0.3)"
         />
-      </Animated.View>
 
-      {/* Text label */}
-      <Animated.View style={[styles.textContainer, { opacity: textOpacity }]}>
-        <Text style={styles.text}>{title}</Text>
-        <View style={styles.arrowHints}>
-          <Ionicons name="chevron-forward" size={16} color="rgba(99, 102, 241, 0.3)" />
-          <Ionicons name="chevron-forward" size={16} color="rgba(99, 102, 241, 0.5)" />
-          <Ionicons name="chevron-forward" size={16} color="rgba(99, 102, 241, 0.7)" />
-        </View>
-      </Animated.View>
+        {/* 2. Text Content */}
 
-      {/* Draggable thumb */}
+        {/* Fallback Text (No Distortion) - Ensures visibility */}
+        <Text
+          x={textX}
+          y={textY}
+          text={title}
+          font={font}
+          color="white"
+          opacity={0.8}
+        />
+
+        {/* Distorted Text Layer */}
+        <Group
+          layer={
+            textFilter ? (
+              <Paint>
+                <ImageFilter filter={textFilter} />
+              </Paint>
+            ) : undefined
+          }
+        >
+          <Text
+            x={textX}
+            y={textY}
+            text={title}
+            font={font}
+            color="white"
+            opacity={1.0}
+          >
+            <BoxShadow dx={0} dy={1} blur={2} color="rgba(0,0,0,0.5)" />
+          </Text>
+
+          <Text
+            x={textX + font.getTextWidth(title) + 12}
+            y={textY}
+            text=">>>"
+            font={font}
+            color="rgba(255,255,255,0.7)"
+            style="stroke"
+            strokeWidth={2}
+          />
+        </Group>
+      </Canvas>
+
+      {/* Touch Handler & Thumb Overlay */}
+      {/* We use a transparent view logic but render the visual thumb here? 
+          Actually, let's render the visual thumb in React Native View on top 
+          so we can use Ionicons easily, as requested. 
+          The Request was "make the icon transparent so we can see interaction". 
+      */}
+
       <Animated.View
         style={[
           styles.thumbContainer,
-          {
-            transform: [
-              { translateX },
-              { scale: thumbScale },
-            ],
-          },
+          thumbAnimatedStyle,
         ]}
         {...panResponder.panHandlers}
       >
-        <View style={styles.thumb}>
-          <LinearGradient
-            colors={completed ? ['#10B981', '#059669'] : gradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          
-          {/* Success checkmark overlay */}
-          <Animated.View
-            style={[
-              styles.successOverlay,
-              {
-                transform: [{ scale: successScale }],
-                opacity: successScale,
-              },
-            ]}
-          >
-            <Ionicons name="checkmark" size={28} color="#FFFFFF" />
+        <View style={styles.glassThumb}>
+          {/* Extremely subtle glass gradient for the thumb */}
+          <View style={styles.thumbGlassOverlay} />
+
+          {/* Start Icon (Fades Out) */}
+          <Animated.View style={[styles.iconContainer, startIconStyle]}>
+            <Ionicons name={icon} size={28} color="rgba(255,255,255,0.9)" />
           </Animated.View>
-          
-          {/* Normal icon */}
-          <Animated.View
-            style={{
-              opacity: successScale.interpolate({
-                inputRange: [0, 1],
-                outputRange: [1, 0],
-              }),
-            }}
-          >
-            <Ionicons name={icon} size={24} color="#FFFFFF" />
-          </Animated.View>
+
+          {/* End Icon (Fades In) - Optional */}
+          {endIcon && (
+            <Animated.View style={[styles.iconContainer, StyleSheet.absoluteFill, endIconStyle]}>
+              <Ionicons name={endIcon} size={28} color="rgba(255,255,255,0.9)" />
+            </Animated.View>
+          )}
         </View>
-        
-        {/* Thumb glow */}
-        <View style={[styles.thumbGlow, { backgroundColor: gradient[0] }]} />
       </Animated.View>
     </View>
   );
@@ -280,62 +323,9 @@ const GlassSlider: React.FC<GlassSliderProps> = ({
 
 const styles = StyleSheet.create({
   container: {
-    height: SLIDER_HEIGHT,
     borderRadius: SLIDER_HEIGHT / 2,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: glassColors.border.light,
-    backgroundColor: Platform.OS === 'web' ? 'rgba(255, 255, 255, 0.6)' : 'transparent',
-    shadowColor: glassColors.accent.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-  innerBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: SLIDER_HEIGHT / 2,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    margin: 1,
-  },
-  topHighlight: {
-    position: 'absolute',
-    top: 1,
-    left: 20,
-    right: 20,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    borderRadius: 1,
-  },
-  shimmer: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 100,
-  },
-  shimmerGradient: {
-    flex: 1,
-  },
-  textContainer: {
-    position: 'absolute',
-    left: THUMB_SIZE + PADDING + 10,
-    right: 20,
-    top: 0,
-    bottom: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  text: {
-    fontSize: 17,
-    ...typography.button,
-    color: glassColors.text.primary,
-    marginRight: 8,
-  },
-  arrowHints: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: 'transparent',
   },
   thumbContainer: {
     position: 'absolute',
@@ -343,35 +333,35 @@ const styles = StyleSheet.create({
     top: PADDING,
     width: THUMB_SIZE,
     height: THUMB_SIZE,
+    zIndex: 10,
   },
-  thumb: {
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
+  glassThumb: {
+    flex: 1,
     borderRadius: THUMB_SIZE / 2,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+    // Minimal styling to be "transparent" but visible as an interactive object
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.1)', // Very transparent
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-  thumbGlow: {
-    position: 'absolute',
-    width: THUMB_SIZE + 20,
-    height: THUMB_SIZE + 20,
-    borderRadius: (THUMB_SIZE + 20) / 2,
-    top: -10,
-    left: -10,
-    opacity: 0.2,
-    zIndex: -1,
+  thumbGlassOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: THUMB_SIZE / 2,
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
-  successOverlay: {
-    position: 'absolute',
+  iconContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
+  }
 });
 
 export default GlassSlider;
